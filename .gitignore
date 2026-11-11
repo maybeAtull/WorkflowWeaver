@@ -23,3 +23,6 @@ dist/
 .vscode/
 .idea/
 Thumbs.db
+
+# Browser-automation tool output
+.playwright-mcp/
