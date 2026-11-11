@@ -1,0 +1,25 @@
+# Secrets, never commit
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+*.pem
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Local data and editors
+*.db
+*.sqlite3
+.vscode/
+.idea/
+Thumbs.db
