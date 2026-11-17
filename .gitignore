@@ -3,7 +3,11 @@
 .env.*
 !.env.example
 credentials.json
+credentials*.json
 token.json
+tokens.json
+gcp-oauth*.json
+client_secret*.json
 *.pem
 
 # Python
