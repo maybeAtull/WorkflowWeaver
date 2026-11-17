@@ -1,7 +1,7 @@
 # WorkflowWeaver
 
 NL-to-multi-tool workflow automation agent (FDE Capstone). Users describe a process in English;
-a LangGraph agent executes it across Notion MCP, Google Drive MCP and Microsoft Teams webhook,
+a LangGraph agent executes it across Notion MCP, Google Drive MCP and a Slack or Microsoft Teams webhook,
 streams progress over SSE, traces to Langfuse, retries failures and rolls back on fatal errors.
 
 Problem statement: `D:\CapstoneProject\WorkflowWeaver_ProblemStatement.html`
@@ -9,16 +9,19 @@ Implementation plan: `C:\Users\atulg\.claude\plans\you-are-a-senior-sparkling-sp
 
 ## Pass gates (never break these)
 1. At least one workflow runs end-to-end.
-2. ALL of Notion, Drive, Teams integrated.
+2. ALL required tools integrated: Notion, Drive and the notifier. The brief names Teams, so the Teams
+   path must stay implemented and working even when Slack is used locally (`NOTIFIER_PROVIDER`).
 3. Langfuse traces emitted.
 4. README has: Project Overview, Architecture Description, Setup Instructions, Environment Variables,
    Frontend Run Instructions, Backend Run Instructions, Sample Workflow Examples, Known Limitations.
 5. `.env.example` lists every variable used.
 
 ## Stack
-- Backend: Python 3.10+, FastAPI, LangGraph, langchain-anthropic, langchain-mcp-adapters, Langfuse, SQLite.
+- Backend: Python 3.10+, FastAPI, LangGraph, langchain-mcp-adapters, Langfuse, SQLite.
+- LLM: provider-switchable via `LLM_PROVIDER` (`google` = Gemini free tier, default; `anthropic` = Claude).
+  Packages: langchain-google-genai, langchain-anthropic.
 - Frontend: React + Vite + Tailwind CSS **v3** (do not upgrade to v4).
-- MCP servers (Notion, Drive) run in Docker. Teams is a plain webhook POST (no Graph API).
+- MCP servers (Notion, Drive) run in Docker. Slack and Teams are plain webhook POSTs (no Graph API), selected by `NOTIFIER_PROVIDER` (default `teams`).
 
 ## Commands
 - Backend: `cd backend && python -m venv .venv && pip install -r requirements.txt && uvicorn app.main:app --reload`
@@ -28,13 +31,16 @@ Implementation plan: `C:\Users\atulg\.claude\plans\you-are-a-senior-sparkling-sp
 
 ## Architecture rules
 - Graph code lives in `backend/app/agent/`; one node per file in `nodes/`; state only in `state.py`.
-- Every tool goes through the `ToolAdapter` interface (`execute` + `undo`). Never call Notion/Drive/Teams
+- Every tool goes through the `ToolAdapter` interface (`execute` + `undo`). Never call Notion/Drive/Slack/Teams
   directly from a node.
 - Every executed action records its undo handle in state BEFORE the next step runs.
-- Teams notification is always the final step (it cannot be undone).
+- The notification (Slack or Teams) is always the final step (it cannot be undone). Notifier adapters share one
+  interface and one provider-neutral message model; each renders it in its own format.
 - Nodes emit events via `app/events.py`; never write to the SSE stream directly.
 - Retry: exponential backoff with jitter, max 3. Only retry transient errors; fatal errors go to rollback.
 - LLM outputs for plans/intents must use structured output validated by Pydantic. No regex parsing of prose.
+- Get the LLM only through `app/llm.py` `get_llm()`. Never import a provider package (Gemini, Anthropic)
+  anywhere else, so the provider stays a `.env` choice. Prompts must work on both providers.
 - Prompts live in `agent/prompts.py` only.
 - Keep a failure-injection switch (`SIMULATE_FAILURE_STEP`) so retry/rollback can be demoed deterministically.
 

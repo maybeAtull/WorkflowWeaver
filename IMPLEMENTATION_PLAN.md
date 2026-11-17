@@ -1,7 +1,7 @@
 # WorkflowWeaver – Implementation Plan
 
 ## Context
-FDE Capstone (30–40 hrs): a platform where a business user types a workflow in plain English and a LangGraph agent executes it across **Notion (MCP), Google Drive (MCP), Microsoft Teams (webhook)**, streaming progress over SSE, with Langfuse tracing, retry and rollback. Graded by an automated DIFY workflow on: Functional correctness 35%, Agent design 25%, UX 20%, Code quality/docs 15%, Innovation 5%.
+FDE Capstone (30–40 hrs): a platform where a business user types a workflow in plain English and a LangGraph agent executes it across **Notion (MCP), Google Drive (MCP), and a Slack or Microsoft Teams webhook (switchable via `NOTIFIER_PROVIDER`)**, streaming progress over SSE, with Langfuse tracing, retry and rollback. Graded by an automated DIFY workflow on: Functional correctness 35%, Agent design 25%, UX 20%, Code quality/docs 15%, Innovation 5%.
 
 **Hard pass gates** (everything is prioritised around these): (1) one workflow runs end-to-end, (2) ALL three tools integrated, (3) Langfuse traces present, (4) complete README with the 8 required sections, (5) valid `.env.example`. Also: ZIP structure `README.md, .env.example, frontend/, backend/, docs/architecture.png`; synthetic data only (disclaimer in the problem statement); no secrets committed.
 
@@ -11,10 +11,10 @@ Workspace `d:\CapstoneProject\WorkflowWeaver` is empty and not a git repo. Plan:
 | Decision | Choice | Why |
 |---|---|---|
 | Backend | **FastAPI (Python)** | LangGraph, Langfuse and MCP SDKs are Python-first; one language for the whole agent side. |
-| LLM | **Claude Sonnet via `langchain-anthropic`** | Rubric says "how effectively Claude is prompted"; strong tool use and structured output. Keep the model name in `.env` (`LLM_MODEL`) so it's swappable. |
+| LLM | **Provider switch (`LLM_PROVIDER`): Gemini free tier by default, Claude supported** via `langchain-google-genai` / `langchain-anthropic`, built only in `app/llm.py` | Free to develop on; the evaluator can supply their own key for either provider. One key variable (`LLM_API_KEY`) plus `LLM_MODEL` (empty = provider default). Prompts must be tested on both. |
 | MCP client | **`langchain-mcp-adapters`** (stdio to Docker containers) | Converts MCP tools into LangChain tools that LangGraph can call; satisfies "demonstrably MCP". |
 | Notion/Drive MCP | Official `@notionhq/notion-mcp-server`, a Drive MCP server, both in Docker | Required by the brief; Docker Compose makes setup reproducible for the evaluator. |
-| Teams | Plain `httpx` POST of an Adaptive Card to the Workflows webhook | Graph API explicitly not required. Not MCP, so it's a normal tool wrapper. |
+| Notifier | **Switch (`NOTIFIER_PROVIDER`, default `teams`): Slack or Teams** via plain `httpx` POST. Teams = Adaptive Card to the Workflows webhook; Slack = Incoming Webhook (text/blocks). One interface and a provider-neutral message model; a `get_notifier()` factory | Graph API explicitly not required. Not MCP, so it's a normal tool wrapper. The brief names Teams, so it must stay working; Slack lets development proceed without a Teams account. Only the selected provider's URL is required. |
 | Run store | **SQLite** (runs, steps, reports) | Zero setup for the evaluator; supports history and the JSON report endpoint. |
 | Frontend | React + Vite + **Tailwind v3** (pinned) | Brief says v3; v4 config differs and would confuse the setup instructions. |
 | Streaming | SSE with `sse-starlette`; frontend uses `fetch` stream or `EventSource` | Required. Run is started with POST, events read with GET `/runs/{id}/events`. |
@@ -30,7 +30,7 @@ WorkflowWeaver/
 │   ├── app/api/{runs,templates,reports}.py
 │   ├── app/agent/{state.py,graph.py,prompts.py}
 │   ├── app/agent/nodes/{parse_intent,plan,execute_step,verify,rollback,report}.py
-│   ├── app/tools/{notion.py,drive.py,teams.py,registry.py}   # uniform Tool interface incl. undo()
+│   ├── app/tools/{notion.py,drive.py,notifier.py,slack.py,teams.py,registry.py}   # uniform Tool interface incl. undo()
 │   ├── app/observability/langfuse_setup.py
 │   ├── app/events.py               # per-run event bus -> SSE
 │   ├── app/db.py  app/config.py  app/templates/*.json
@@ -44,14 +44,14 @@ WorkflowWeaver/
 
 ### Phase 0 – Setup and de-risking (≈2h)
 1. `git init`, `.gitignore` (`.env`, `credentials.json`, `token.json`, `node_modules`, `.venv`, `*.db`).
-2. Scaffold backend (venv, `requirements.txt`: fastapi, uvicorn, sse-starlette, langgraph, langchain-anthropic, langchain-mcp-adapters, langfuse, httpx, pydantic-settings, pytest) and frontend (`npm create vite`, Tailwind v3).
+2. Scaffold backend (venv, `requirements.txt`: fastapi, uvicorn, sse-starlette, langgraph, langchain-google-genai, langchain-anthropic, langchain-mcp-adapters, langfuse, httpx, pydantic-settings, pytest) and frontend (`npm create vite`, Tailwind v3).
 3. Write `.env.example` with the exact variables from the brief (+ `LLM_MODEL`, `LLM_PROVIDER`). Pydantic `Settings` that fails fast with a clear message on missing vars.
 4. Create accounts/credentials with **synthetic test data only**: Notion integration + shared page, Google Cloud OAuth + Drive folder, Teams Workflows webhook, Langfuse project.
 5. **Smoke-test each integration in isolation** with throwaway scripts: list Notion tools via MCP and create a page; upload a Drive doc; POST a Teams card; emit one Langfuse trace. *Why: every downstream phase depends on these; finding an OAuth/Docker problem on day 1 is cheap, on the last day fatal.*
 
 ### Phase 1 – Tool layer (≈5h)
 6. `docker-compose.yml` for the Notion and Drive MCP servers; backend MCP client manager (start/connect/close, lifecycle in FastAPI lifespan).
-7. Define a `ToolAdapter` interface: `execute(params) -> ToolResult{ok, output, undo_handle}` and `undo(undo_handle)`. Implement Notion (create page, create tasks/DB rows; undo = archive/delete page), Drive (create doc; undo = delete file), Teams (post card; undo = no-op, documented as non-reversible, so Teams is always the **last** step).
+7. Define a `ToolAdapter` interface: `execute(params) -> ToolResult{ok, output, undo_handle}` and `undo(undo_handle)`. Implement Notion (create page, create tasks/DB rows; undo = archive/delete page), Drive (create doc; undo = delete file), the notifier (Slack or Teams: post a message; undo = no-op, documented as non-reversible, so the notification is always the **last** step).
 8. Central registry exposing a tool catalogue to the planner. *Why: the undo handle is what makes rollback real rather than cosmetic, and Functional Correctness (35%) explicitly tests rollback.*
 
 ### Phase 2 – LangGraph agent (≈8h, the heart of the 25% criterion)
@@ -103,12 +103,12 @@ a LangGraph agent executes it across Notion MCP, Google Drive MCP and Microsoft 
 streams progress over SSE, traces to Langfuse, retries failures and rolls back on fatal errors.
 
 ## Pass gates (never break these)
-1. At least one workflow runs end-to-end. 2. ALL of Notion, Drive, Teams integrated.
+1. At least one workflow runs end-to-end. 2. ALL required tools integrated (Notion, Drive, notifier; Teams must stay working).
 3. Langfuse traces emitted. 4. README has: Overview, Architecture, Setup, Env Vars, Frontend Run,
 Backend Run, Sample Workflows, Known Limitations. 5. `.env.example` lists every variable used.
 
 ## Stack
-Backend: Python 3.10+, FastAPI, LangGraph, langchain-anthropic, langchain-mcp-adapters, Langfuse, SQLite.
+Backend: Python 3.10+, FastAPI, LangGraph, langchain-google-genai / langchain-anthropic (via `LLM_PROVIDER`), langchain-mcp-adapters, Langfuse, SQLite.
 Frontend: React + Vite + Tailwind CSS **v3** (do not upgrade to v4).
 
 ## Commands
@@ -119,10 +119,10 @@ Frontend: React + Vite + Tailwind CSS **v3** (do not upgrade to v4).
 
 ## Architecture rules
 - Graph code lives in `backend/app/agent/`; one node per file in `nodes/`; state only in `state.py`.
-- Every tool goes through the `ToolAdapter` interface (`execute` + `undo`). Never call Notion/Drive/Teams
+- Every tool goes through the `ToolAdapter` interface (`execute` + `undo`). Never call Notion/Drive/Slack/Teams
   directly from a node.
 - Every executed action records an undo handle in state BEFORE the next step runs.
-- Teams notification is always the final step (it cannot be undone).
+- The notification (Slack or Teams) is always the final step (it cannot be undone).
 - Nodes emit events via `app/events.py`; never write to the SSE stream directly.
 - Retry: exponential backoff with jitter, max 3. Only retry transient errors; fatal errors go to rollback.
 - LLM outputs for plans/intents must use structured output validated by Pydantic. No regex parsing of prose.
