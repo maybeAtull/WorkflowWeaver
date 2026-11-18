@@ -18,8 +18,9 @@ Implementation plan: `C:\Users\atulg\.claude\plans\you-are-a-senior-sparkling-sp
 
 ## Stack
 - Backend: Python 3.10+, FastAPI, LangGraph, langchain-mcp-adapters, Langfuse, SQLite.
-- LLM: provider-switchable via `LLM_PROVIDER` (`google` = Gemini free tier, default; `anthropic` = Claude).
-  Packages: langchain-google-genai, langchain-anthropic.
+- LLM: provider-switchable via `LLM_PROVIDER` (`google` = Gemini free tier, default; `groq` = Groq free tier,
+  8K tokens/minute so keep prompts small; `anthropic` = Claude).
+  Packages: langchain-google-genai, langchain-groq, langchain-anthropic.
 - Frontend: React + Vite + Tailwind CSS **v3** (do not upgrade to v4).
 - MCP servers (Notion, Drive) run in Docker. Slack and Teams are plain webhook POSTs (no Graph API), selected by `NOTIFIER_PROVIDER` (default `teams`).
 
@@ -40,7 +41,7 @@ Implementation plan: `C:\Users\atulg\.claude\plans\you-are-a-senior-sparkling-sp
 - Retry: exponential backoff with jitter, max 3. Only retry transient errors; fatal errors go to rollback.
 - LLM outputs for plans/intents must use structured output validated by Pydantic. No regex parsing of prose.
 - Get the LLM only through `app/llm.py` `get_llm()`. Never import a provider package (Gemini, Anthropic)
-  anywhere else, so the provider stays a `.env` choice. Prompts must work on both providers.
+  anywhere else, so the provider stays a `.env` choice. Prompts must work on every supported provider.
 - Prompts live in `agent/prompts.py` only.
 - Keep a failure-injection switch (`SIMULATE_FAILURE_STEP`) so retry/rollback can be demoed deterministically.
 

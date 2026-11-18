@@ -57,6 +57,15 @@ def test_switching_provider_switches_the_default_model(
     assert load().llm_model_name == "claude-sonnet-5-5"
 
 
+def test_groq_provider_gets_its_own_default_model(
+    full_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
+    settings = load()
+    assert settings.llm_provider == "groq"
+    assert settings.llm_model_name == "openai/gpt-oss-120b"
+
+
 def test_explicit_llm_model_wins_over_the_default(
     full_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

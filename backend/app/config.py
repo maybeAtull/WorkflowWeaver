@@ -18,7 +18,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # which directory uvicorn or pytest is launched from; docker-compose reads the same file.
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
-LlmProvider = Literal["google", "anthropic"]
+LlmProvider = Literal["google", "anthropic", "groq"]
 NotifierProvider = Literal["slack", "teams"]
 
 # Used when LLM_MODEL is empty, so switching LLM_PROVIDER alone never pairs a provider
@@ -26,6 +26,7 @@ NotifierProvider = Literal["slack", "teams"]
 DEFAULT_LLM_MODELS: dict[LlmProvider, str] = {
     "google": "gemini-3.8-flash",
     "anthropic": "claude-sonnet-5-5",
+    "groq": "openai/gpt-oss-120b",
 }
 
 

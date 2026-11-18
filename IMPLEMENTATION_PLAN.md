@@ -11,7 +11,7 @@ Workspace `d:\CapstoneProject\WorkflowWeaver` is empty and not a git repo. Plan:
 | Decision | Choice | Why |
 |---|---|---|
 | Backend | **FastAPI (Python)** | LangGraph, Langfuse and MCP SDKs are Python-first; one language for the whole agent side. |
-| LLM | **Provider switch (`LLM_PROVIDER`): Gemini free tier by default, Claude supported** via `langchain-google-genai` / `langchain-anthropic`, built only in `app/llm.py` | Free to develop on; the evaluator can supply their own key for either provider. One key variable (`LLM_API_KEY`) plus `LLM_MODEL` (empty = provider default). Prompts must be tested on both. |
+| LLM | **Provider switch (`LLM_PROVIDER`): Gemini free tier by default; Groq free tier and Claude supported** via `langchain-google-genai` / `langchain-groq` / `langchain-anthropic`, built only in `app/llm.py` | Free to develop on; the evaluator can supply their own key for either provider. One key variable (`LLM_API_KEY`) plus `LLM_MODEL` (empty = provider default). Prompts must be tested on every supported provider. Groq free tier is limited to 8K tokens/minute and 200K/day per model, so keep prompts small and use few, rich LLM calls per run. |
 | MCP client | **`langchain-mcp-adapters`** (stdio to Docker containers) | Converts MCP tools into LangChain tools that LangGraph can call; satisfies "demonstrably MCP". |
 | Notion/Drive MCP | Official `@notionhq/notion-mcp-server`, a Drive MCP server, both in Docker | Required by the brief; Docker Compose makes setup reproducible for the evaluator. |
 | Notifier | **Switch (`NOTIFIER_PROVIDER`, default `teams`): Slack or Teams** via plain `httpx` POST. Teams = Adaptive Card to the Workflows webhook; Slack = Incoming Webhook (text/blocks). One interface and a provider-neutral message model; a `get_notifier()` factory | Graph API explicitly not required. Not MCP, so it's a normal tool wrapper. The brief names Teams, so it must stay working; Slack lets development proceed without a Teams account. Only the selected provider's URL is required. |
@@ -44,7 +44,7 @@ WorkflowWeaver/
 
 ### Phase 0 – Setup and de-risking (≈2h)
 1. `git init`, `.gitignore` (`.env`, `credentials.json`, `token.json`, `node_modules`, `.venv`, `*.db`).
-2. Scaffold backend (venv, `requirements.txt`: fastapi, uvicorn, sse-starlette, langgraph, langchain-google-genai, langchain-anthropic, langchain-mcp-adapters, langfuse, httpx, pydantic-settings, pytest) and frontend (`npm create vite`, Tailwind v3).
+2. Scaffold backend (venv, `requirements.txt`: fastapi, uvicorn, sse-starlette, langgraph, langchain-google-genai, langchain-groq, langchain-anthropic, langchain-mcp-adapters, langfuse, httpx, pydantic-settings, pytest) and frontend (`npm create vite`, Tailwind v3).
 3. Write `.env.example` with the exact variables from the brief (+ `LLM_MODEL`, `LLM_PROVIDER`). Pydantic `Settings` that fails fast with a clear message on missing vars.
 4. Create accounts/credentials with **synthetic test data only**: Notion integration + shared page, Google Cloud OAuth + Drive folder, Teams Workflows webhook, Langfuse project.
 5. **Smoke-test each integration in isolation** with throwaway scripts: list Notion tools via MCP and create a page; upload a Drive doc; POST a Teams card; emit one Langfuse trace. *Why: every downstream phase depends on these; finding an OAuth/Docker problem on day 1 is cheap, on the last day fatal.*
@@ -108,7 +108,7 @@ streams progress over SSE, traces to Langfuse, retries failures and rolls back o
 Backend Run, Sample Workflows, Known Limitations. 5. `.env.example` lists every variable used.
 
 ## Stack
-Backend: Python 3.10+, FastAPI, LangGraph, langchain-google-genai / langchain-anthropic (via `LLM_PROVIDER`), langchain-mcp-adapters, Langfuse, SQLite.
+Backend: Python 3.10+, FastAPI, LangGraph, langchain-google-genai / langchain-groq / langchain-anthropic (via `LLM_PROVIDER`), langchain-mcp-adapters, Langfuse, SQLite.
 Frontend: React + Vite + Tailwind CSS **v3** (do not upgrade to v4).
 
 ## Commands

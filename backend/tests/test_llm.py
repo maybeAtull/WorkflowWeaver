@@ -1,6 +1,7 @@
 import pytest
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 
 from app.config import Settings
 from app.llm import LLM_MAX_RETRIES, LLM_TIMEOUT_SECONDS, get_llm
@@ -31,17 +32,27 @@ def test_anthropic_provider_returns_claude_model(base_env: pytest.MonkeyPatch) -
     assert llm.model == "claude-sonnet-5-5"
 
 
+def test_groq_provider_returns_groq_model(base_env: pytest.MonkeyPatch) -> None:
+    llm = get_llm(build(llm_provider="groq"))
+    assert isinstance(llm, ChatGroq)
+    assert llm.model_name == "openai/gpt-oss-120b"
+
+
 def test_calls_are_bounded_by_timeout_and_retry_limits(
     base_env: pytest.MonkeyPatch,
 ) -> None:
     google = get_llm(build(llm_provider="google"))
     anthropic = get_llm(build(llm_provider="anthropic"))
+    groq = get_llm(build(llm_provider="groq"))
+    assert isinstance(groq, ChatGroq)
     assert isinstance(google, ChatGoogleGenerativeAI)
     assert isinstance(anthropic, ChatAnthropic)
     assert google.timeout == LLM_TIMEOUT_SECONDS
     assert google.max_retries == LLM_MAX_RETRIES
     assert anthropic.default_request_timeout == LLM_TIMEOUT_SECONDS
     assert anthropic.max_retries == LLM_MAX_RETRIES
+    assert groq.request_timeout == LLM_TIMEOUT_SECONDS
+    assert groq.max_retries == LLM_MAX_RETRIES
 
 
 def test_explicit_model_overrides_the_default(base_env: pytest.MonkeyPatch) -> None:

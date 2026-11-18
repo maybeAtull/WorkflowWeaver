@@ -43,6 +43,16 @@ def get_llm(settings: Settings | None = None) -> BaseChatModel:
             max_retries=LLM_MAX_RETRIES,
         )
 
+    if settings.llm_provider == "groq":
+        from langchain_groq import ChatGroq
+
+        return ChatGroq(
+            model=model,
+            api_key=api_key,
+            timeout=LLM_TIMEOUT_SECONDS,
+            max_retries=LLM_MAX_RETRIES,
+        )
+
     # Unreachable while LlmProvider is validated, but fails loudly if a provider is added
     # to the config without being wired up here.
     raise ValueError(f"Unsupported LLM provider: {settings.llm_provider!r}")
