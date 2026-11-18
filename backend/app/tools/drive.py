@@ -90,6 +90,7 @@ class DriveAdapter(ToolAdapter):
             # The server refuses a second file with the same name, so repeating a create
             # cannot duplicate; at worst it fails with "already exists".
             repeat_safe=True,
+            planner_hidden_params=frozenset({"folder_id"}),  # comes from settings
         ),
         "list_folder": ActionSpec(
             name="list_folder",
@@ -97,6 +98,7 @@ class DriveAdapter(ToolAdapter):
             params_model=ListFolderParams,
             reversible=False,
             repeat_safe=True,  # a read
+            planner_visible=False,  # used by the verify step, not for planning
         ),
     }
 

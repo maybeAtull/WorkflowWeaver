@@ -123,6 +123,7 @@ class NotionAdapter(ToolAdapter):
             reversible=True,
             # repeat_safe stays False: Notion has no duplicate guard, so repeating a create
             # after an unknown outcome could make a second page.
+            planner_hidden_params=frozenset({"parent_page_id"}),  # comes from settings
         ),
         "get_page": ActionSpec(
             name="get_page",
@@ -130,6 +131,7 @@ class NotionAdapter(ToolAdapter):
             params_model=GetPageParams,
             reversible=False,
             repeat_safe=True,  # a read
+            planner_visible=False,  # used by the verify step, not for planning
         ),
     }
 

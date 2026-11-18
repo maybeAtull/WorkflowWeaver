@@ -184,6 +184,16 @@ async def test_get_page_with_an_unreadable_reply_is_fatal() -> None:
         await adapter(FakeMcp("garbage")).execute("get_page", {"page_id": "abc"})
 
 
+def test_the_planner_sees_the_create_but_not_the_read_or_the_parent_id() -> None:
+    create, read = (
+        NotionAdapter.actions["create_page"],
+        NotionAdapter.actions["get_page"],
+    )
+    assert create.planner_visible is True
+    assert create.planner_hidden_params == {"parent_page_id"}  # comes from settings
+    assert read.planner_visible is False  # used by the verify step only
+
+
 def test_only_the_read_is_safe_to_repeat() -> None:
     """A repeated page create could make a second page, so it must never be retried blindly."""
     flags = {name: spec.repeat_safe for name, spec in NotionAdapter.actions.items()}

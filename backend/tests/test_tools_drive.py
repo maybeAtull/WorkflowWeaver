@@ -191,6 +191,16 @@ def test_the_more_items_notice_is_reported() -> None:
     assert more is True
 
 
+def test_the_planner_sees_the_create_but_not_the_listing_or_the_folder_id() -> None:
+    create, listing_ = (
+        DriveAdapter.actions["create_text_file"],
+        DriveAdapter.actions["list_folder"],
+    )
+    assert create.planner_visible is True
+    assert create.planner_hidden_params == {"folder_id"}  # comes from settings
+    assert listing_.planner_visible is False  # used by the verify step only
+
+
 def test_both_actions_are_safe_to_repeat() -> None:
     """The server refuses a second file with the same name, so a repeated create cannot duplicate."""
     assert all(spec.repeat_safe for spec in DriveAdapter.actions.values())

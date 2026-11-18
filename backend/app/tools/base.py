@@ -75,6 +75,11 @@ class ActionSpec(BaseModel):
     # True when running the action twice does no harm (a read, a harmless duplicate message, or
     # a server that refuses duplicates). Defaults to False: forgetting it fails safe.
     repeat_safe: bool = False
+    # What the planner (the LLM) is allowed to see. Verification-only actions (reads used by the
+    # verify step) are hidden, and so are parameters supplied from settings (folder and page ids),
+    # because an LLM cannot know real ids and would invent them.
+    planner_visible: bool = True
+    planner_hidden_params: frozenset[str] = frozenset()
 
 
 def is_safe_to_retry(error: "TransientToolError", spec: "ActionSpec") -> bool:
