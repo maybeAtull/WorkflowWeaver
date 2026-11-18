@@ -11,12 +11,15 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/config.py -> repo root. Resolved from __file__ so it works no matter
 # which directory uvicorn or pytest is launched from; docker-compose reads the same file.
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+# Where the Drive MCP server's one-time login (`... google-drive-mcp auth`) saves tokens.json.
+DEFAULT_GOOGLE_TOKEN_DIR = Path.home() / ".config" / "google-drive-mcp"
 
 LlmProvider = Literal["google", "anthropic", "groq"]
 NotifierProvider = Literal["slack", "teams"]
@@ -49,6 +52,8 @@ class Settings(BaseSettings):
     # Google Drive (MCP)
     google_credentials_path: Path
     google_drive_folder_id: str
+    # Folder holding tokens.json from the one-time login. Optional: empty means the default.
+    google_token_dir: Path | None = None
 
     # Notifications: the final workflow step posts to a chat tool via an incoming webhook.
     # Only the URL for the selected provider is required (enforced below). Teams is the
@@ -65,6 +70,24 @@ class Settings(BaseSettings):
 
     # Failure injection for demoing retry/rollback deterministically (empty = disabled).
     simulate_failure_step: str = ""
+
+    @field_validator("google_token_dir", mode="before")
+    @classmethod
+    def _empty_token_dir_means_default(cls, value: object) -> object:
+        # A bare `GOOGLE_TOKEN_DIR=` (as in the template) would otherwise become Path("."),
+        # silently pointing at the current directory.
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @property
+    def google_token_directory(self) -> Path:
+        """Where tokens.json lives: GOOGLE_TOKEN_DIR if set, else the server's default."""
+        return self.google_token_dir or DEFAULT_GOOGLE_TOKEN_DIR
+
+    @property
+    def google_credentials_file(self) -> Path:
+        """GOOGLE_CREDENTIALS_PATH as an absolute path (relative paths are repo-root relative)."""
+        path = self.google_credentials_path
+        return path if path.is_absolute() else (ENV_FILE.parent / path).resolve()
 
     @property
     def notifier_webhook_url(self) -> SecretStr | None:

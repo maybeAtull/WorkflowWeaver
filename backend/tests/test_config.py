@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.config import Settings
+from app.config import DEFAULT_GOOGLE_TOKEN_DIR, Settings
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -55,6 +55,35 @@ def test_switching_provider_switches_the_default_model(
 ) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
     assert load().llm_model_name == "claude-sonnet-5-5"
+
+
+def test_token_dir_defaults_to_the_servers_own_location(
+    full_env: dict[str, str],
+) -> None:
+    assert load().google_token_directory == DEFAULT_GOOGLE_TOKEN_DIR
+
+
+def test_empty_token_dir_means_default_not_the_current_directory(
+    full_env: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GOOGLE_TOKEN_DIR", "")
+    assert load().google_token_directory == DEFAULT_GOOGLE_TOKEN_DIR
+
+
+def test_explicit_token_dir_is_used(
+    full_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("GOOGLE_TOKEN_DIR", str(tmp_path))
+    assert load().google_token_directory == tmp_path
+
+
+def test_relative_credentials_path_resolves_against_the_repo_root(
+    full_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    assert load().google_credentials_file == (REPO_ROOT / "credentials.json").resolve()
+    absolute = tmp_path / "keys.json"
+    monkeypatch.setenv("GOOGLE_CREDENTIALS_PATH", str(absolute))
+    assert load().google_credentials_file == absolute
 
 
 def test_groq_provider_gets_its_own_default_model(
