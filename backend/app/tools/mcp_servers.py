@@ -8,7 +8,10 @@ from app.tools.mcp_session import McpServerSpec
 NOTION_SERVER = "notion"
 DRIVE_SERVER = "drive"
 
-NOTION_IMAGE = "mcp/notion"
+# Pinned by digest (the image only publishes "latest"); must match docker-compose.yml.
+NOTION_IMAGE = (
+    "mcp/notion@sha256:df0d6781d03f37bd5b962c85ae1f288382f31b7108c489473641ffc372f43dc9"
+)
 # Built from docker/drive-mcp/Dockerfile (the upstream project publishes no image).
 DRIVE_IMAGE = "workflowweaver-drive-mcp"
 

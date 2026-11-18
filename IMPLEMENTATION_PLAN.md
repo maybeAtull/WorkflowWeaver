@@ -50,7 +50,7 @@ WorkflowWeaver/
 5. **Smoke-test each integration in isolation** with throwaway scripts: list Notion tools via MCP and create a page; upload a Drive doc; POST a Teams card; emit one Langfuse trace. *Why: every downstream phase depends on these; finding an OAuth/Docker problem on day 1 is cheap, on the last day fatal.*
 
 ### Phase 1 – Tool layer (≈5h)
-6. `docker-compose.yml` for the Notion and Drive MCP servers; backend MCP client manager (start/connect/close, lifecycle in FastAPI lifespan).
+6. `docker-compose.yml` defining the pinned MCP server images for reproducible setup (build/pull only: the servers speak MCP over stdio, so the backend starts each on demand with `docker run -i`, not as compose services); backend MCP client manager (start/connect/close, lifecycle in FastAPI lifespan).
 7. Define a `ToolAdapter` interface: `execute(params) -> ToolResult{ok, output, undo_handle}` and `undo(undo_handle)`. Implement Notion (create page, create tasks/DB rows; undo = archive/delete page), Drive (create doc; undo = delete file), the notifier (Slack or Teams: post a message; undo = no-op, documented as non-reversible, so the notification is always the **last** step).
 8. Central registry exposing a tool catalogue to the planner. *Why: the undo handle is what makes rollback real rather than cosmetic, and Functional Correctness (35%) explicitly tests rollback.*
 

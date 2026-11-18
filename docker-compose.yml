@@ -1,0 +1,27 @@
+# MCP server images for WorkflowWeaver.
+#
+# These servers are NOT long-running services. They speak MCP over stdin/stdout, so the backend
+# starts each one on demand with `docker run -i` for the duration of a workflow run. This file
+# is the single place that defines which images are used, so setup is reproducible:
+#
+#   docker compose --profile setup build                     # build the Drive image
+#   docker compose --profile setup pull --ignore-buildable   # pull the Notion image
+#
+# The "setup" profile keeps a stray `docker compose up` from starting containers that would
+# exit immediately (nothing is attached to their stdin).
+#
+# Keep the image names below in sync with app/tools/mcp_servers.py (a test checks this).
+name: workflowweaver
+
+services:
+  notion-mcp:
+    # Official Notion MCP server, pinned by digest: the image publishes only a "latest" tag,
+    # and a silent upstream change could rename the tools our whitelist depends on.
+    image: mcp/notion@sha256:df0d6781d03f37bd5b962c85ae1f288382f31b7108c489473641ffc372f43dc9
+    profiles: ["setup"]
+
+  drive-mcp:
+    # Built from docker/drive-mcp (the upstream project publishes no image).
+    build: ./docker/drive-mcp
+    image: workflowweaver-drive-mcp
+    profiles: ["setup"]

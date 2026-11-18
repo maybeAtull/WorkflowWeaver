@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,19 @@ def test_whitelists_contain_exactly_the_tools_the_adapters_need() -> None:
         "API-retrieve-a-page",
     }
     assert DRIVE_ALLOWED_TOOLS == {"listFolder", "createTextFile", "deleteItem"}
+
+
+def test_docker_compose_defines_exactly_the_images_the_code_runs() -> None:
+    """Drift guard: setup (docker compose) and the app must agree on the image names."""
+    compose = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+    images = re.findall(
+        r"^\s*image:\s*(\S+)", compose.read_text(encoding="utf-8"), re.MULTILINE
+    )
+    assert sorted(images) == sorted([NOTION_IMAGE, DRIVE_IMAGE])
+
+
+def test_the_notion_image_is_pinned_by_digest() -> None:
+    assert "@sha256:" in NOTION_IMAGE
 
 
 def test_default_specs_cover_both_servers(settings: Settings) -> None:

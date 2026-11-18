@@ -27,7 +27,11 @@ Implementation plan: `C:\Users\atulg\.claude\plans\you-are-a-senior-sparkling-sp
 ## Commands
 - Backend: `cd backend && python -m venv .venv && pip install -r requirements.txt && uvicorn app.main:app --reload`
 - Frontend: `cd frontend && npm install && npm run dev`
-- MCP servers: `docker compose up -d`
+- MCP server images (one-time setup): `docker compose --profile setup build` then
+  `docker compose --profile setup pull --ignore-buildable`. The MCP servers are NOT long-running compose
+  services: they speak MCP over stdin/stdout, so the backend starts each one on demand with `docker run -i`
+  for the duration of a workflow run (see `app/tools/mcp_session.py`). Drive also needs a one-time login on
+  the host: `npx -y @piotr-agier/google-drive-mcp@2.13.0 auth`.
 - Tests: `cd backend && pytest`
 
 ## Architecture rules
