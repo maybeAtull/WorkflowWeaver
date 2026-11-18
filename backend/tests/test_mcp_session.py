@@ -189,6 +189,64 @@ async def test_a_dead_connection_is_transient_and_the_next_call_restarts() -> No
     assert backend.started == ["notion", "notion"]
 
 
+async def test_a_timeout_leaves_the_outcome_unknown() -> None:
+    async def handler(tool: str, arguments: dict[str, Any]) -> Any:
+        await asyncio.sleep(5)
+
+    async with manager(FakeBackend(handler), call_timeout=0.05) as mcp:
+        with pytest.raises(TransientToolError) as exc_info:
+            await mcp.call_tool("notion", "read")
+    assert (
+        exc_info.value.outcome_unknown is True
+    )  # the request was sent; it may have run
+
+
+@pytest.mark.parametrize(
+    ("text", "outcome_unknown"),
+    [
+        ("429 Too Many Requests", False),  # "not now": provably did not run
+        ("Rate limit exceeded", False),
+        ("HTTP 503 Service Unavailable", True),
+        ("request timed out", True),
+        ("Please try again later", True),
+    ],
+)
+async def test_only_rate_limit_replies_are_known_not_to_have_run(
+    text: str, outcome_unknown: bool
+) -> None:
+    async def handler(tool: str, arguments: dict[str, Any]) -> Any:
+        return reply(text, is_error=True)
+
+    async with manager(FakeBackend(handler)) as mcp:
+        with pytest.raises(TransientToolError) as exc_info:
+            await mcp.call_tool("notion", "read")
+    assert exc_info.value.outcome_unknown is outcome_unknown
+
+
+async def test_a_lost_connection_leaves_the_outcome_unknown() -> None:
+    async def handler(tool: str, arguments: dict[str, Any]) -> Any:
+        raise anyio.ClosedResourceError
+
+    async with manager(FakeBackend(handler)) as mcp:
+        with pytest.raises(TransientToolError) as exc_info:
+            await mcp.call_tool("notion", "read")
+    assert exc_info.value.outcome_unknown is True
+
+
+async def test_a_start_timeout_is_known_not_to_have_run() -> None:
+    @asynccontextmanager
+    async def slow_factory(spec: McpServerSpec):
+        await asyncio.sleep(5)
+        yield None
+
+    async with McpSessionManager([SPEC], slow_factory, start_timeout=0.05) as mcp:
+        with pytest.raises(
+            TransientToolError, match="Starting notion timed out"
+        ) as exc_info:
+            await mcp.call_tool("notion", "read")
+    assert exc_info.value.outcome_unknown is False  # no tool call was ever sent
+
+
 async def test_a_protocol_level_rejection_is_fatal() -> None:
     async def handler(tool: str, arguments: dict[str, Any]) -> Any:
         raise McpError(ErrorData(code=-32602, message="Invalid params"))

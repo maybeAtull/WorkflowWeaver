@@ -38,7 +38,9 @@ Implementation plan: `C:\Users\atulg\.claude\plans\you-are-a-senior-sparkling-sp
 - The notification (Slack or Teams) is always the final step (it cannot be undone). Notifier adapters share one
   interface and one provider-neutral message model; each renders it in its own format.
 - Nodes emit events via `app/events.py`; never write to the SSE stream directly.
-- Retry: exponential backoff with jitter, max 3. Only retry transient errors; fatal errors go to rollback.
+- Retry: exponential backoff with jitter, max 3. Only retry transient errors, and only when
+  `is_safe_to_retry(error, spec)` (in `tools/base.py`) allows it: a transient error with an unknown outcome is
+  retried only for repeat-safe actions (e.g. never a Notion page create). Fatal errors go to rollback.
 - LLM outputs for plans/intents must use structured output validated by Pydantic. No regex parsing of prose.
 - Get the LLM only through `app/llm.py` `get_llm()`. Never import a provider package (Gemini, Anthropic)
   anywhere else, so the provider stays a `.env` choice. Prompts must work on every supported provider.

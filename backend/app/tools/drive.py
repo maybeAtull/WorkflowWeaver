@@ -87,12 +87,16 @@ class DriveAdapter(ToolAdapter):
             ),
             params_model=CreateTextFileParams,
             reversible=True,
+            # The server refuses a second file with the same name, so repeating a create
+            # cannot duplicate; at worst it fails with "already exists".
+            repeat_safe=True,
         ),
         "list_folder": ActionSpec(
             name="list_folder",
             description="List the files and folders in a Google Drive folder.",
             params_model=ListFolderParams,
             reversible=False,
+            repeat_safe=True,  # a read
         ),
     }
 

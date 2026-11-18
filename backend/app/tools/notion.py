@@ -121,12 +121,15 @@ class NotionAdapter(ToolAdapter):
             ),
             params_model=CreatePageParams,
             reversible=True,
+            # repeat_safe stays False: Notion has no duplicate guard, so repeating a create
+            # after an unknown outcome could make a second page.
         ),
         "get_page": ActionSpec(
             name="get_page",
             description="Read a Notion page back: its title, link and whether it is in the trash.",
             params_model=GetPageParams,
             reversible=False,
+            repeat_safe=True,  # a read
         ),
     }
 

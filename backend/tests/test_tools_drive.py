@@ -191,6 +191,11 @@ def test_the_more_items_notice_is_reported() -> None:
     assert more is True
 
 
+def test_both_actions_are_safe_to_repeat() -> None:
+    """The server refuses a second file with the same name, so a repeated create cannot duplicate."""
+    assert all(spec.repeat_safe for spec in DriveAdapter.actions.values())
+
+
 def test_only_creating_a_file_is_reversible() -> None:
     reversible = {
         name for name, spec in DriveAdapter.actions.items() if spec.reversible

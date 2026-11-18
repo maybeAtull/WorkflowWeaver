@@ -18,7 +18,17 @@ class ToolError(Exception):
 
 
 class TransientToolError(ToolError):
-    """Temporary failure (timeout, rate limit, 5xx). The agent retries with backoff."""
+    """Temporary failure (timeout, rate limit, 5xx). The agent retries with backoff.
+
+    `outcome_unknown` says whether the request may nevertheless have taken effect. A timeout
+    after the request was sent is unknown: the item may exist. A rate-limit reply, a failure
+    to connect or a server that never started is not: the request provably did not run.
+    The default is True (the safe assumption); only set False when it is certain.
+    """
+
+    def __init__(self, message: str, *, outcome_unknown: bool = True) -> None:
+        super().__init__(message)
+        self.outcome_unknown = outcome_unknown
 
 
 class FatalToolError(ToolError):
@@ -62,6 +72,19 @@ class ActionSpec(BaseModel):
     description: str
     params_model: type[BaseModel]  # validates and documents the action's parameters
     reversible: bool  # True means execute() must return an undo_handle
+    # True when running the action twice does no harm (a read, a harmless duplicate message, or
+    # a server that refuses duplicates). Defaults to False: forgetting it fails safe.
+    repeat_safe: bool = False
+
+
+def is_safe_to_retry(error: "TransientToolError", spec: "ActionSpec") -> bool:
+    """The retry rule: retry unless the request may already have taken effect.
+
+    A transient error is retried when the request provably did not run (outcome known), or
+    when repeating the action is harmless. Otherwise (for example a Notion page create that
+    timed out) retrying could make a duplicate, so the workflow rolls back instead.
+    """
+    return not error.outcome_unknown or spec.repeat_safe
 
 
 # --------------------------------------------------------------------------- adapter

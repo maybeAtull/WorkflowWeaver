@@ -12,6 +12,7 @@ from app.tools.base import (
     ToolResult,
     TransientToolError,
     UndoHandle,
+    is_safe_to_retry,
 )
 
 
@@ -133,6 +134,43 @@ async def test_undo_rejects_a_non_reversible_action() -> None:
     handle = UndoHandle(tool="fake", action="announce")
     with pytest.raises(FatalToolError, match="cannot be undone"):
         await FakeTool().undo(handle)
+
+
+def test_transient_errors_assume_an_unknown_outcome_unless_told_otherwise() -> None:
+    assert TransientToolError("x").outcome_unknown is True
+    assert TransientToolError("x", outcome_unknown=False).outcome_unknown is False
+
+
+def test_actions_are_not_repeat_safe_by_default() -> None:
+    """Forgetting the flag must fail safe, towards not retrying."""
+    assert _spec("x", reversible=False).repeat_safe is False
+
+
+@pytest.mark.parametrize(
+    ("outcome_unknown", "repeat_safe", "expected"),
+    [
+        (False, False, True),  # provably did not run: retry
+        (False, True, True),
+        (True, True, True),  # may have run, but repeating is harmless: retry
+        (
+            True,
+            False,
+            False,
+        ),  # may have run and repeating could duplicate: do not retry
+    ],
+)
+def test_the_retry_rule(
+    outcome_unknown: bool, repeat_safe: bool, expected: bool
+) -> None:
+    spec = ActionSpec(
+        name="a",
+        description="d",
+        params_model=TitleParams,
+        reversible=False,
+        repeat_safe=repeat_safe,
+    )
+    error = TransientToolError("x", outcome_unknown=outcome_unknown)
+    assert is_safe_to_retry(error, spec) is expected
 
 
 def test_undo_handle_survives_a_json_round_trip() -> None:

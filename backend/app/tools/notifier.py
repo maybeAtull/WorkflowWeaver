@@ -73,6 +73,7 @@ class WebhookNotifier(ToolAdapter):
             ),
             params_model=NotificationMessage,
             reversible=False,
+            repeat_safe=True,  # a repeated send is at worst a duplicate message
         )
     }
 
@@ -104,12 +105,17 @@ class WebhookNotifier(ToolAdapter):
         try:
             response = await self._post(payload)
         except httpx.TimeoutException as exc:
-            raise TransientToolError(f"{self.provider} webhook timed out") from exc
+            # Failing to connect in time means nothing was sent; a later timeout does not.
+            raise TransientToolError(
+                f"{self.provider} webhook timed out",
+                outcome_unknown=not isinstance(exc, httpx.ConnectTimeout),
+            ) from exc
         except httpx.HTTPError as exc:
             raise TransientToolError(
                 self._redact(
                     f"{self.provider} webhook request failed ({type(exc).__name__}): {exc}"
-                )
+                ),
+                outcome_unknown=not isinstance(exc, httpx.ConnectError),
             ) from exc
 
         body = response.text.strip()
@@ -137,7 +143,11 @@ class WebhookNotifier(ToolAdapter):
             + (f" ({hint})" if hint else "")
         )
         # Rate limits and server errors are temporary; everything else will not fix itself.
-        if status_code == 429 or status_code >= 500:
+        if status_code == 429:
+            raise TransientToolError(
+                message, outcome_unknown=False
+            )  # "not now": it did not run
+        if status_code >= 500:
             raise TransientToolError(message)
         raise FatalToolError(message)
 

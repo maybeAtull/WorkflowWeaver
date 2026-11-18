@@ -96,6 +96,10 @@ _TRANSIENT = re.compile(
     re.IGNORECASE,
 )
 
+# A rate-limit reply means the server answered "not now", so the request provably did not run.
+# Every other transient error (a timeout, a 5xx) leaves the outcome unknown.
+_NOT_EXECUTED = re.compile(r"\b429\b|rate.?limit|too many requests", re.IGNORECASE)
+
 # The server process died or its pipe closed: restart it on the next call.
 _CONNECTION_ERRORS = (
     anyio.ClosedResourceError,
@@ -186,7 +190,9 @@ class McpSessionManager:
         if getattr(result, "isError", False):
             message = self._clean(spec, f"{server}.{tool} returned an error: {text}")
             if _TRANSIENT.search(text):
-                raise TransientToolError(message)
+                raise TransientToolError(
+                    message, outcome_unknown=not _NOT_EXECUTED.search(text)
+                )
             raise FatalToolError(message)
         return text
 
@@ -230,9 +236,12 @@ class McpSessionManager:
                 )
             # Python 3.10 has two distinct timeout classes (they are aliases from 3.11).
             except (TimeoutError, asyncio.TimeoutError) as exc:  # noqa: UP041
+                # Still starting, so it cannot be asked to stop politely: cancel it now.
+                task.cancel()
                 await self._stop_task(task, stop)
                 raise TransientToolError(
-                    f"Starting {spec.name} timed out after {self._start_timeout:g}s"
+                    f"Starting {spec.name} timed out after {self._start_timeout:g}s",
+                    outcome_unknown=False,  # no tool call was ever sent
                 ) from exc
             except asyncio.CancelledError:
                 task.cancel()

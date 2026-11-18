@@ -184,6 +184,12 @@ async def test_get_page_with_an_unreadable_reply_is_fatal() -> None:
         await adapter(FakeMcp("garbage")).execute("get_page", {"page_id": "abc"})
 
 
+def test_only_the_read_is_safe_to_repeat() -> None:
+    """A repeated page create could make a second page, so it must never be retried blindly."""
+    flags = {name: spec.repeat_safe for name, spec in NotionAdapter.actions.items()}
+    assert flags == {"create_page": False, "get_page": True}
+
+
 def test_only_creating_a_page_is_reversible() -> None:
     reversible = {
         name for name, spec in NotionAdapter.actions.items() if spec.reversible

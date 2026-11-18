@@ -100,6 +100,46 @@ async def test_an_error_body_that_echoes_the_url_is_scrubbed() -> None:
     assert SLACK_URL not in str(exc_info.value)
 
 
+def test_a_repeated_send_is_harmless_so_it_is_safe_to_repeat() -> None:
+    assert SlackNotifier.actions["send"].repeat_safe is True
+    assert TeamsNotifier.actions["send"].repeat_safe is True
+
+
+@pytest.mark.parametrize(
+    ("status", "outcome_unknown"), [(429, False), (500, True), (503, True)]
+)
+async def test_only_a_rate_limit_reply_is_known_not_to_have_run(
+    status: int, outcome_unknown: bool
+) -> None:
+    notifier = SlackNotifier(
+        SLACK_URL, mock_client(lambda request: httpx.Response(status))
+    )
+    with pytest.raises(TransientToolError) as exc_info:
+        await notifier.execute("send", {"title": "Done"})
+    assert exc_info.value.outcome_unknown is outcome_unknown
+
+
+@pytest.mark.parametrize(
+    ("error", "outcome_unknown"),
+    [
+        (httpx.ConnectError("cannot connect"), False),  # nothing was sent
+        (httpx.ConnectTimeout("cannot connect in time"), False),
+        (httpx.ReadTimeout("no reply"), True),  # the request was sent
+        (httpx.RemoteProtocolError("dropped"), True),
+    ],
+)
+async def test_failures_before_sending_are_known_not_to_have_run(
+    error: Exception, outcome_unknown: bool
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise error
+
+    notifier = SlackNotifier(SLACK_URL, mock_client(handler))
+    with pytest.raises(TransientToolError) as exc_info:
+        await notifier.execute("send", {"title": "Done"})
+    assert exc_info.value.outcome_unknown is outcome_unknown
+
+
 def test_get_notifier_follows_the_configured_provider(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
