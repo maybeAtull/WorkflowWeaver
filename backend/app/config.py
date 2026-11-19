@@ -17,6 +17,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # backend/app/config.py -> repo root. Resolved from __file__ so it works no matter
 # which directory uvicorn or pytest is launched from; docker-compose reads the same file.
 ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 # Where the Drive MCP server's one-time login (`... google-drive-mcp auth`) saves tokens.json.
 DEFAULT_GOOGLE_TOKEN_DIR = Path.home() / ".config" / "google-drive-mcp"
@@ -71,6 +72,9 @@ class Settings(BaseSettings):
     # Failure injection for demoing retry/rollback deterministically (empty = disabled).
     simulate_failure_step: str = ""
 
+    # SQLite file holding run history (requests, events, reports). Created on first start.
+    database_path: Path = Path("data/workflowweaver.db")
+
     @field_validator("google_token_dir", mode="before")
     @classmethod
     def _empty_token_dir_means_default(cls, value: object) -> object:
@@ -88,6 +92,12 @@ class Settings(BaseSettings):
         """GOOGLE_CREDENTIALS_PATH as an absolute path (relative paths are repo-root relative)."""
         path = self.google_credentials_path
         return path if path.is_absolute() else (ENV_FILE.parent / path).resolve()
+
+    @property
+    def database_file(self) -> Path:
+        """DATABASE_PATH as an absolute path (relative paths are backend/ relative)."""
+        path = self.database_path
+        return path if path.is_absolute() else (BACKEND_DIR / path).resolve()
 
     @property
     def notifier_webhook_url(self) -> SecretStr | None:

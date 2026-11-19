@@ -1,5 +1,7 @@
 """Startup and shutdown of the API: shared services are created once and the tracer is flushed."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,10 +13,15 @@ from tests.test_config import FAKE_ENV
 
 
 @pytest.fixture
-def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
+def settings(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Settings:
     for key, value in FAKE_ENV.items():
         monkeypatch.setenv(key, value)
-    return Settings(_env_file=None, llm_provider="groq", notifier_provider="slack")  # type: ignore[call-arg]
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,
+        llm_provider="groq",
+        notifier_provider="slack",
+        database_path=tmp_path / "test.db",
+    )
 
 
 def test_health_works_without_startup() -> None:
@@ -33,7 +40,9 @@ def test_startup_creates_the_shared_services_and_health_names_the_providers(
             "status": "ok",
             "llm_provider": "groq",
             "notifier_provider": "slack",
+            "database": "ok",
         }
+        assert settings.database_file.exists()
 
 
 def test_health_never_contains_a_secret(settings: Settings) -> None:

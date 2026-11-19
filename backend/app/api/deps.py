@@ -11,6 +11,7 @@ from fastapi import Request
 from app.config import Settings
 from app.events import EventBus
 from app.observability.tracing import Tracer
+from app.store.runs import RunStore
 
 
 @dataclass
@@ -18,6 +19,7 @@ class AppState:
     settings: Settings
     bus: EventBus
     tracer: Tracer
+    store: RunStore
 
 
 def get_state(request: Request) -> AppState:

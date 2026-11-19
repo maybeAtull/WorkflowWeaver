@@ -23,6 +23,9 @@ dist/
 
 # Local data and editors
 *.db
+*.db-wal
+*.db-shm
+backend/data/
 *.sqlite3
 .vscode/
 .idea/

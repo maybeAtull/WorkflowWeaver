@@ -12,6 +12,7 @@ from app.config import Settings, get_settings
 from app.events import EventBus
 from app.observability.langfuse_tracer import create_tracer
 from app.observability.tracing import Tracer, guarded
+from app.store.runs import RunStore
 
 # Vite dev-server origins. The browser sends these as the Origin header; without a match
 # the browser blocks the frontend from reading API responses (including the SSE stream).
@@ -32,8 +33,13 @@ def create_app(
         active = settings or get_settings()
         # Guarded, so a Langfuse outage can never stop the API from starting or a run from running.
         active_tracer = guarded(tracer or create_tracer(active))
+        store = RunStore(active.database_file)
+        store.open()
+        # A run still marked 'running' belongs to a process that died: settle it honestly
+        # instead of leaving the history page showing a run that will never finish.
+        await store.recover_interrupted()
         app.state.services = AppState(
-            settings=active, bus=EventBus(), tracer=active_tracer
+            settings=active, bus=EventBus(), tracer=active_tracer, store=store
         )
         try:
             yield
@@ -59,6 +65,7 @@ def create_app(
             "status": "ok",
             "llm_provider": services.settings.llm_provider,
             "notifier_provider": services.settings.notifier_provider,
+            "database": "ok",  # startup would have failed if it could not be opened
         }
 
     return app
