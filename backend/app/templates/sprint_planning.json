@@ -1,0 +1,35 @@
+{
+  "id": "sprint_planning",
+  "order": 2,
+  "name": "Sprint planning",
+  "description": "Record a sprint's goals and committed items in Notion with their owners, keep a copy in Google Drive, and announce the plan to the team.",
+  "fields": [
+    {
+      "key": "sprint_name",
+      "label": "Sprint name",
+      "help": "For example: Sprint 12",
+      "kind": "text",
+      "max_length": 120
+    },
+    {
+      "key": "goals",
+      "label": "Sprint goals",
+      "help": "What the team wants to achieve this sprint.",
+      "kind": "longtext",
+      "max_length": 1500
+    },
+    {
+      "key": "committed_items",
+      "label": "Committed items",
+      "help": "One per line, ideally with an owner and a due date.",
+      "kind": "longtext",
+      "max_length": 2500
+    }
+  ],
+  "request_template": "Please create a Notion page for sprint \"{{sprint_name}}\" that lists the sprint goals and the committed items with their owners, save a copy in Google Drive, and announce the sprint plan to the team in chat.\n\nSprint goals:\n{{goals}}\n\nCommitted items:\n{{committed_items}}",
+  "example": {
+    "sprint_name": "Sprint 12 (Falcon)",
+    "goals": "Ship the onboarding checklist. Cut page load time by a quarter.",
+    "committed_items": "- Priya: build the onboarding checklist screen, due Wednesday.\n- Sam: add image caching to the dashboard, due Thursday.\n- Alex: write the release notes, due next Monday."
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "id": "incident_response",
+  "order": 3,
+  "name": "Incident response",
+  "description": "Record an incident in Notion with its timeline and follow-up actions, keep a copy in Google Drive, and alert the team.",
+  "fields": [
+    {
+      "key": "incident_title",
+      "label": "Incident title",
+      "help": "A short description, for example: Checkout page slow",
+      "kind": "text",
+      "max_length": 120
+    },
+    {
+      "key": "severity",
+      "label": "Severity",
+      "help": "How serious is it right now?",
+      "kind": "choice",
+      "max_length": 20,
+      "options": ["Low", "Medium", "High", "Critical"]
+    },
+    {
+      "key": "timeline_and_actions",
+      "label": "Timeline and actions",
+      "help": "What happened, when, and what must be done next. Owners and due dates are picked up automatically.",
+      "kind": "longtext",
+      "max_length": 4000
+    }
+  ],
+  "request_template": "Please record this incident in Notion as \"{{incident_title}}\" (severity: {{severity}}) with the timeline and the follow-up actions, save a copy in Google Drive, and alert the team in chat.\n\nTimeline and actions:\n{{timeline_and_actions}}",
+  "example": {
+    "incident_title": "Checkout page slow (fictional)",
+    "severity": "High",
+    "timeline_and_actions": "09:10 Support reported slow checkout for some customers.\n09:25 Sam found a database query taking too long.\n09:40 Sam rolled back last night's change and speed recovered.\nFollow-ups: Alex will write the incident summary by tomorrow. Priya will add an alert for slow queries this week."
+  }
+}

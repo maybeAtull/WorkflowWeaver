@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agent.runtime import agent_runtime
 from app.api import history as history_api
 from app.api import runs as runs_api
+from app.api import templates as templates_api
 from app.api.deps import AppState
 from app.api.run_manager import RunManager, RuntimeFactory
 from app.config import Settings, get_settings
@@ -17,6 +18,7 @@ from app.events import EventBus
 from app.observability.langfuse_tracer import create_tracer
 from app.observability.tracing import Tracer, guarded
 from app.store.runs import RunStore
+from app.templates import load_templates
 
 # Vite dev-server origins. The browser sends these as the Origin header; without a match
 # the browser blocks the frontend from reading API responses (including the SSE stream).
@@ -48,7 +50,12 @@ def create_app(
         bus = EventBus()
         runs = RunManager(active, bus, active_tracer, store, runtime)
         app.state.services = AppState(
-            settings=active, bus=bus, tracer=active_tracer, store=store, runs=runs
+            settings=active,
+            bus=bus,
+            tracer=active_tracer,
+            store=store,
+            runs=runs,
+            templates=load_templates(),  # a broken template file stops startup, loudly
         )
         try:
             yield
@@ -68,6 +75,7 @@ def create_app(
 
     app.include_router(runs_api.router)
     app.include_router(history_api.router)
+    app.include_router(templates_api.router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

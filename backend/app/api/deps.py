@@ -13,6 +13,7 @@ from app.config import Settings
 from app.events import EventBus
 from app.observability.tracing import Tracer
 from app.store.runs import RunStore
+from app.templates import Template
 
 
 @dataclass
@@ -22,6 +23,7 @@ class AppState:
     tracer: Tracer
     store: RunStore
     runs: RunManager
+    templates: list[Template]
 
 
 def get_state(request: Request) -> AppState:

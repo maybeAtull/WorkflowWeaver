@@ -4,13 +4,14 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 
 from app.agent.nodes.parse_intent import MAX_REQUEST_CHARS
 from app.api.deps import AppState, get_state
 from app.api.run_manager import TooManyRuns
 from app.events import RunEvent
+from app.templates import TemplateError
 
 router = APIRouter(prefix="/api")
 
@@ -22,27 +23,53 @@ SIMULATE_PATTERN = r"^[A-Za-z0-9_-]{1,20}(:(fatal|transient))?$"
 
 
 class StartRunRequest(BaseModel):
-    request: str = Field(max_length=MAX_REQUEST_CHARS)
+    """Either free text (`request`) or a template with its field values, never both."""
+
+    request: str | None = Field(default=None, max_length=MAX_REQUEST_CHARS)
+    template_id: str | None = None
+    values: dict[str, str] = Field(default_factory=dict)
     simulate: str | None = Field(default=None, pattern=SIMULATE_PATTERN)
 
     @field_validator("request")
     @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
+    def _not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
             raise ValueError("Describe the workflow you want to run.")
-        return value.strip()
+        return value.strip() if value is not None else None
+
+    @model_validator(mode="after")
+    def _one_source(self) -> "StartRunRequest":
+        if (self.request is None) == (self.template_id is None):
+            raise ValueError("Send either a request or a template, not both.")
+        if self.request is not None and self.values:
+            raise ValueError("Field values only go with a template.")
+        return self
 
 
 class StartRunResponse(BaseModel):
     run_id: str
 
 
+def _request_text(body: StartRunRequest, state: AppState) -> str:
+    """The request the agent will run: the user's text, or a template filled with their values."""
+    if body.request is not None:
+        return body.request
+    template = next((t for t in state.templates if t.id == body.template_id), None)
+    if template is None:
+        raise HTTPException(status_code=404, detail="That template does not exist.")
+    try:
+        return template.render(body.values)
+    except TemplateError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
+
+
 @router.post("/runs", status_code=202)
 async def start_run(
     body: StartRunRequest, state: Annotated[AppState, Depends(get_state)]
 ) -> StartRunResponse:
+    request = _request_text(body, state)
     try:
-        run_id = await state.runs.start(body.request, body.simulate)
+        run_id = await state.runs.start(request, body.simulate)
     except TooManyRuns:
         raise HTTPException(
             status_code=429,

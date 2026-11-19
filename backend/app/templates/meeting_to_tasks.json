@@ -1,0 +1,27 @@
+{
+  "id": "meeting_to_tasks",
+  "order": 1,
+  "name": "Meeting to tasks",
+  "description": "Turn meeting notes into a Notion page with action items and decisions, keep a copy in Google Drive, and tell the team.",
+  "fields": [
+    {
+      "key": "meeting_title",
+      "label": "Meeting title",
+      "help": "For example: Weekly sync",
+      "kind": "text",
+      "max_length": 120
+    },
+    {
+      "key": "notes",
+      "label": "Meeting notes",
+      "help": "Paste the notes as they are. Names, owners and due dates are picked up automatically.",
+      "kind": "longtext",
+      "max_length": 4000
+    }
+  ],
+  "request_template": "Please turn these meeting notes into a Notion page titled \"{{meeting_title}}\" with the action items and decisions, save a copy in Google Drive, and tell the team in chat.\n\nMeeting notes:\n{{notes}}",
+  "example": {
+    "meeting_title": "Project Falcon weekly sync",
+    "notes": "Attendees: Alex, Sam, Priya.\n- Alex will finalise the launch checklist by Friday.\n- Sam will draft the customer FAQ and share it with Priya for review.\n- Priya will book the demo room for next Tuesday.\nDecision: launch date stays on the 14th."
+  }
+}
