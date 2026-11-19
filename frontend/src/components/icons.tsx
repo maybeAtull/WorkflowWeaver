@@ -92,6 +92,38 @@ export const CheckIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const CircleIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="8" />
+  </Icon>
+);
+
+// A quarter ring; the caller makes it spin (and stops that for people who prefer less motion).
+export const SpinnerIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" opacity={0.25} />
+    <path d="M21 12a9 9 0 0 0-9-9" />
+  </Icon>
+);
+
+export const RetryIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5" />
+  </Icon>
+);
+
+export const UndoIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" />
+  </Icon>
+);
+
+export const ExternalIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+  </Icon>
+);
+
 // Which icon belongs to which template (anything unknown gets the spark).
 export const TEMPLATE_ICONS: Record<string, (p: IconProps) => React.JSX.Element> = {
   meeting_to_tasks: NotesIcon,

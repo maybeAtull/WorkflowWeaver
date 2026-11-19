@@ -2,61 +2,13 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { eventsUrl } from "../api/client";
-import type { RunEvent } from "../api/types";
+import { FakeEventSource, ev } from "../test/fakeEventSource";
 import { MAX_RECONNECT_FAILURES, useRunStream } from "./useRunStream";
 
-// A stand-in for the browser's EventSource that the test can drive by hand.
-class FakeEventSource {
-  static CONNECTING = 0;
-  static OPEN = 1;
-  static CLOSED = 2;
-  static instances: FakeEventSource[] = [];
-
-  readyState = FakeEventSource.CONNECTING;
-  onopen: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  closed = false;
-  private listeners = new Map<string, ((message: MessageEvent<string>) => void)[]>();
-
-  constructor(readonly url: string) {
-    FakeEventSource.instances.push(this);
-  }
-
-  addEventListener(type: string, listener: (message: MessageEvent<string>) => void) {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  }
-
-  close() {
-    this.closed = true;
-    this.readyState = FakeEventSource.CLOSED;
-  }
-
-  // Test controls:
-  open() {
-    this.readyState = FakeEventSource.OPEN;
-    this.onopen?.();
-  }
-
-  send(event: RunEvent) {
-    const message = { data: JSON.stringify(event) } as MessageEvent<string>;
-    for (const listener of this.listeners.get(event.type) ?? []) listener(message);
-  }
-
-  // The browser is retrying by itself (readyState CONNECTING) unless `final` is set.
-  fail(final = false) {
-    this.readyState = final ? FakeEventSource.CLOSED : FakeEventSource.CONNECTING;
-    this.onerror?.();
-  }
-}
-
-function ev(seq: number, type: RunEvent["type"], data: object = {}): RunEvent {
-  return { run_id: "r1", seq, type, data, timestamp: "2026-01-01T12:00:00Z" } as RunEvent;
-}
-
-const latest = () => FakeEventSource.instances[FakeEventSource.instances.length - 1];
+const latest = () => FakeEventSource.latest();
 
 beforeEach(() => {
-  FakeEventSource.instances = [];
+  FakeEventSource.reset();
   vi.stubGlobal("EventSource", FakeEventSource);
 });
 afterEach(() => vi.unstubAllGlobals());
