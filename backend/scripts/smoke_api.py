@@ -364,6 +364,23 @@ def run_plan(
 # --------------------------------------------------------------------------- main
 
 
+def select_plans(only: str | None) -> list[Plan]:
+    """The plans to run: all of them, or the numbers given (1-based), in the order listed."""
+    if not only:
+        return list(PLANS)
+    try:
+        numbers = [int(part) for part in only.split(",")]
+    except ValueError:
+        raise ValueError(f"--only takes plan numbers like 1,2 (got {only!r})") from None
+    if len(set(numbers)) != len(numbers) or not all(
+        1 <= n <= len(PLANS) for n in numbers
+    ):
+        raise ValueError(
+            f"--only numbers must be distinct and between 1 and {len(PLANS)}"
+        )
+    return [PLANS[n - 1] for n in numbers]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Live end-to-end check through the API."
@@ -371,11 +388,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--live", action="store_true", help="required: acknowledges real writes"
     )
-    if not parser.parse_args(argv).live:
+    parser.add_argument(
+        "--only",
+        default=None,
+        help="run only these plans by number, e.g. 1,2 (default: all three)",
+    )
+    args = parser.parse_args(argv)
+    if not args.live:
         parser.error(
             "refusing to run without --live: this creates real Notion pages and Drive files "
             "and posts real chat messages."
         )
+    try:
+        plans = select_plans(args.only)
+    except ValueError as error:
+        parser.error(str(error))
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 
     all_ok = True
@@ -394,7 +421,7 @@ def main(argv: list[str] | None = None) -> int:
             examples = {
                 t["id"]: t["example"] for t in client.get("/api/templates").json()
             }
-            for index, plan in enumerate(PLANS):
+            for index, plan in enumerate(plans):
                 if index:
                     print(
                         f"\n(waiting {WAIT_BETWEEN_RUNS_SECONDS}s: the free LLM tier allows about one run a minute)"

@@ -236,3 +236,15 @@ def test_the_plan_matches_what_the_proposal_promised() -> None:
         ("incident_response", "s2:transient", "completed"),
     ]
     assert [p.announces for p in PLANS] == [True, False, True]
+
+
+def test_only_selects_plans_by_number() -> None:
+    assert smoke_api.select_plans(None) == PLANS
+    assert smoke_api.select_plans("1,2") == PLANS[:2]
+    assert smoke_api.select_plans("3") == [PLANS[2]]
+
+
+@pytest.mark.parametrize("bad", ["0", "4", "1,1", "a", "1,,2"])
+def test_a_bad_only_value_is_refused(bad: str) -> None:
+    with pytest.raises(ValueError, match="--only"):
+        smoke_api.select_plans(bad)
