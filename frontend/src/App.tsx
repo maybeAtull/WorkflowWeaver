@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 
 import BackendStatus from "./components/BackendStatus";
-import { LogoIcon } from "./components/icons";
+import { HistoryIcon, LogoIcon } from "./components/icons";
+import HistoryScreen from "./history/HistoryScreen";
 import RunScreen from "./run/RunScreen";
-import { parseRunHash, runHash } from "./run/route";
+import { HISTORY_HASH, type Route, parseRoute, runHash } from "./run/route";
 import StartScreen from "./start/StartScreen";
 
-// The page shows either the start screen or one run. Which one is kept in the address (#run=<id>),
-// so refreshing stays on the run and the back button works.
-const runFromAddress = () => parseRunHash(window.location.hash);
+// The page shows the start screen, one run, or the history. Which one is kept in the address
+// (see run/route.ts), so refreshing stays put and the browser's Back button works.
+const routeFromAddress = (): Route => parseRoute(window.location.hash);
 
 export default function App() {
-  const [runId, setRunId] = useState<string | null>(runFromAddress);
+  const [route, setRoute] = useState<Route>(routeFromAddress);
 
   useEffect(() => {
-    const sync = () => setRunId(runFromAddress());
+    // Clicking a link such as #run=<id> changes the address by itself; follow it.
+    const sync = () => setRoute(routeFromAddress());
     window.addEventListener("popstate", sync);
     window.addEventListener("hashchange", sync);
     return () => {
@@ -23,19 +25,25 @@ export default function App() {
     };
   }, []);
 
-  const show = (id: string | null) => {
+  const go = (next: Route) => {
     // pushState adds a history entry (so Back returns to the previous screen) without reloading.
-    const address = id ? runHash(id) : window.location.pathname + window.location.search;
+    const address =
+      next.kind === "run"
+        ? runHash(next.runId)
+        : next.kind === "history"
+          ? HISTORY_HASH
+          : window.location.pathname + window.location.search;
     window.history.pushState(null, "", address);
-    setRunId(id);
+    setRoute(next);
   };
+  const start: Route = { kind: "start" };
 
   return (
     <div className="min-h-screen">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+      <header className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-6">
         <button
           type="button"
-          onClick={() => show(null)}
+          onClick={() => go(start)}
           className="flex items-center gap-3 rounded-xl"
           aria-label="WorkflowWeaver home"
         >
@@ -44,12 +52,29 @@ export default function App() {
           </span>
           <span className="text-lg font-medium tracking-tight">WorkflowWeaver</span>
         </button>
-        <BackendStatus />
+        <nav aria-label="Main" className="flex items-center gap-3">
+          <a
+            href={HISTORY_HASH}
+            aria-current={route.kind === "history" ? "page" : undefined}
+            className={
+              "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm transition " +
+              (route.kind === "history"
+                ? "border-white/20 bg-white text-ink-950"
+                : "border-white/10 bg-white/5 text-slate-200 hover:bg-white/10")
+            }
+          >
+            <HistoryIcon className="h-4 w-4" />
+            History
+          </a>
+          <BackendStatus />
+        </nav>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-24">
-        {runId ? (
-          <RunScreen runId={runId} onStartAnother={() => show(null)} />
+        {route.kind === "run" ? (
+          <RunScreen runId={route.runId} onStartAnother={() => go(start)} />
+        ) : route.kind === "history" ? (
+          <HistoryScreen />
         ) : (
           <>
             <section className="mx-auto max-w-3xl py-12 text-center sm:py-16">
@@ -69,7 +94,7 @@ export default function App() {
                 If something goes wrong, it undoes what it created.
               </p>
             </section>
-            <StartScreen onStarted={show} />
+            <StartScreen onStarted={(runId) => go({ kind: "run", runId })} />
           </>
         )}
       </main>

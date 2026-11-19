@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { panel } from "../components/ui";
+import ReportPanel from "../report/ReportPanel";
 import ConnectionBanner from "./ConnectionBanner";
 import OutcomeCard from "./OutcomeCard";
 import Timeline from "./Timeline";
@@ -69,6 +70,7 @@ function LiveRun({ runId, onStartAnother, onTryAgain }: Props & { onTryAgain: ()
 
       <Timeline view={view} />
       <OutcomeCard view={view} onStartAnother={onStartAnother} />
+      <ReportPanel runId={runId} finished={finished} />
     </div>
   );
 }

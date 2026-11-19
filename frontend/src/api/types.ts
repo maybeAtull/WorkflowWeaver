@@ -146,8 +146,38 @@ export interface ReportCreatedItem {
   url: string;
 }
 
-// The parts of the stored report the UI reads; the full report is also offered as a download.
+export interface RunReportStep {
+  id: string;
+  tool: string;
+  action: string;
+  description: string;
+  status: "succeeded" | "failed" | "skipped" | "pending";
+  attempts: number;
+  summary: string | null;
+  url: string | null;
+  error: string | null;
+}
+
+export interface RunReportCheck {
+  step_id: string;
+  tool: string;
+  action: string;
+  status: "verified" | "failed" | "unconfirmed";
+  detail: string;
+}
+
+export interface RunReportUndo {
+  step_id: string;
+  tool: string;
+  action: string;
+  status: "undone" | "failed" | "skipped";
+  detail: string;
+}
+
+// The stored report. The sections are optional because the page must still render if a report
+// is older or newer than this code expects (the server versions it with schema_version).
 export interface RunReport {
+  schema_version?: number;
   run_id: string;
   status: FinalStatus;
   headline: string;
@@ -156,7 +186,11 @@ export interface RunReport {
   summary: string | null;
   duration_seconds: number;
   retries: number;
+  counts?: { total: number; succeeded: number; failed: number; skipped: number; pending: number };
+  steps?: RunReportStep[];
   created: ReportCreatedItem[];
+  checks?: RunReportCheck[];
+  rollback?: RunReportUndo[];
   needs_cleanup: unknown[];
   [key: string]: unknown;
 }

@@ -8,11 +8,10 @@ import { FakeEventSource } from "./test/fakeEventSource";
 function stubFetch() {
   vi.stubGlobal(
     "fetch",
-    vi.fn((url: string) =>
-      Promise.resolve(
-        new Response(JSON.stringify(url.endsWith("/templates") ? [] : { status: "ok" }), { status: 200 }),
-      ),
-    ),
+    vi.fn((url: string) => {
+      const body = url.includes("/api/runs") || url.endsWith("/templates") ? [] : { status: "ok" };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    }),
   );
 }
 
@@ -25,6 +24,36 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("which screen the address selects", () => {
+  it("shows the history at #history and marks its link as the current page", async () => {
+    window.history.replaceState(null, "", "/#history");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Past workflows" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "History" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("has a History link in the header on every screen", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    const link = screen.getByRole("link", { name: "History" });
+    expect(link).toHaveAttribute("href", "#history");
+    expect(link).not.toHaveAttribute("aria-current");
+  });
+
+  it("opens the history when the link is followed, and a run when its row is clicked", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    act(() => {
+      window.history.pushState(null, "", "/#history");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(await screen.findByRole("heading", { name: "Past workflows" })).toBeInTheDocument();
+    act(() => {
+      window.history.pushState(null, "", "/#run=abc123");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(screen.getByRole("heading", { name: "Your workflow is running" })).toBeInTheDocument();
+  });
+
   it("shows the start screen at the plain address", async () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: /Turn a request into finished work/ })).toBeInTheDocument();

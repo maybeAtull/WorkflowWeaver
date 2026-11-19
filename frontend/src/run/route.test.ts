@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRunHash, runHash } from "./route";
+import { parseRoute, parseRunHash, runHash } from "./route";
 
 describe("the run address", () => {
   it("reads a run id from the hash", () => {
@@ -16,5 +16,19 @@ describe("the run address", () => {
 
   it("round-trips", () => {
     expect(parseRunHash(runHash("abc123"))).toBe("abc123");
+  });
+});
+
+describe("the screen an address selects", () => {
+  it("recognises the start screen, a run and the history", () => {
+    expect(parseRoute("")).toEqual({ kind: "start" });
+    expect(parseRoute("#run=abc")).toEqual({ kind: "run", runId: "abc" });
+    expect(parseRoute("#history")).toEqual({ kind: "history" });
+  });
+
+  it("treats anything unrecognised as the start screen", () => {
+    for (const hash of ["#History", "#history/", "#run=", "#run=<x>", "#other"]) {
+      expect(parseRoute(hash)).toEqual({ kind: "start" });
+    }
   });
 });

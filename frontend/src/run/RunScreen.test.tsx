@@ -12,6 +12,13 @@ const PLAN = {
   ],
 };
 
+// A finished run also asks the server for its stored report (covered in ReportPanel.test.tsx);
+// here that request simply never answers, so these tests stay about the timeline.
+vi.mock("../api/client", async (original) => ({
+  ...(await original<typeof import("../api/client")>()),
+  getRun: vi.fn(() => new Promise(() => {})),
+}));
+
 const latest = () => FakeEventSource.latest();
 const send = (...events: ReturnType<typeof ev>[]) =>
   act(() => {
