@@ -1,4 +1,4 @@
-"""The whole graph, run with fake tools and fixed plans: the decision flow without an LLM."""
+﻿"""The whole graph, run with fake tools and fixed plans: the decision flow without an LLM."""
 
 from typing import Any, ClassVar
 
@@ -18,6 +18,7 @@ from app.tools.base import (
     ToolResult,
     TransientToolError,
     UndoHandle,
+    VerifyResult,
 )
 from app.tools.registry import ToolRegistry
 
@@ -62,8 +63,11 @@ class FakeAdapter(ToolAdapter):
         self,
         fail: dict[str, list[Exception]] | None = None,
         undo_fail: dict[str, list[Exception]] | None = None,
+        verify: dict[str, VerifyResult | Exception] | None = None,
     ) -> None:
         self.fail = fail or {}
+        self.verify_script = verify or {}
+        self.verified: list[str] = []
         self.undo_fail = undo_fail or {}
         self.calls: list[str] = []
         self.undone: list[str] = []
@@ -84,6 +88,14 @@ class FakeAdapter(ToolAdapter):
             url=f"https://example.test/{params.title}" if action == "make" else None,
             undo_handle=handle,
         )
+
+    async def _verify(self, handle: UndoHandle) -> VerifyResult:
+        item = handle.data["id"]
+        self.verified.append(item)
+        outcome = self.verify_script.get(item, VerifyResult(status="verified"))
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
     async def _undo(self, handle: UndoHandle) -> None:
         item = handle.data["id"]
@@ -113,8 +125,9 @@ class Rig:
         undo_fail: dict[str, list[Exception]] | None = None,
         injection: Injection | None = None,
         intent: Intent | Exception = INTENT,
+        verify: dict[str, VerifyResult | Exception] | None = None,
     ) -> None:
-        self.adapter = FakeAdapter(fail, undo_fail)
+        self.adapter = FakeAdapter(fail, undo_fail, verify)
         self.bus = EventBus()
         self.intent_calls = 0
 
@@ -177,6 +190,8 @@ async def test_events_run_in_order_and_the_stream_ends_with_run_completed() -> N
         "plan_ready",
         "step_started",
         "step_succeeded",
+        "verify_started",
+        "verify_step",
         "step_started",
         "step_succeeded",
         "run_completed",
@@ -350,6 +365,94 @@ async def test_a_full_length_plan_that_rolls_back_stays_inside_the_recursion_lim
     assert final["status"] == "rolled_back"
     assert len(rig.adapter.undone) == MAX_PLAN_STEPS - 1
     assert RECURSION_LIMIT >= MAX_PLAN_STEPS + 3  # plan + steps + rollback + report
+
+
+# ------------------------------------------------------------------ verification
+
+
+async def test_everything_is_read_back_before_the_notification_goes_out() -> None:
+    rig = Rig([make("a"), make("b"), notify()])
+    final = await rig.run()
+    assert final["status"] == "completed"
+    assert rig.adapter.verified == ["a", "b"]
+    assert [c.status for c in final["checks"]] == ["verified", "verified"]
+    assert rig.types() == [
+        "run_started",
+        "plan_ready",
+        "step_started",  # a
+        "step_succeeded",
+        "step_started",  # b
+        "step_succeeded",
+        "verify_started",  # both items read back while everything is still undoable
+        "verify_step",
+        "verify_step",
+        "step_started",  # only now the irreversible notification
+        "step_succeeded",
+        "run_completed",
+    ]
+
+
+async def test_a_failed_check_rolls_everything_back_and_nothing_is_announced() -> None:
+    rig = Rig(
+        [make("a"), make("b"), notify()],
+        verify={"b": VerifyResult(status="failed", detail="The page is in the trash.")},
+    )
+    final = await rig.run()
+    assert final["status"] == "rolled_back"
+    assert rig.adapter.undone == ["b", "a"]
+    assert "ping" not in rig.adapter.calls  # the irreversible message was never sent
+    assert statuses(final) == ["succeeded", "succeeded", "skipped"]
+    assert "in the trash" in (final["error"] or "")
+    assert [c.status for c in final["checks"]] == ["verified", "failed"]
+
+
+async def test_an_unconfirmed_check_does_not_block_the_run() -> None:
+    rig = Rig(
+        [make("a"), notify()],
+        verify={"a": VerifyResult(status="unconfirmed", detail="listing cut off")},
+    )
+    final = await rig.run()
+    assert final["status"] == "completed"
+    assert [c.status for c in final["checks"]] == ["unconfirmed"]
+    assert final["report"] is not None and final["report"]["checks"][0]["detail"] == (
+        "listing cut off"
+    )
+
+
+async def test_a_plan_without_a_notification_is_verified_at_the_end() -> None:
+    rig = Rig([make("a"), make("b")])
+    final = await rig.run()
+    assert final["status"] == "completed" and rig.adapter.verified == ["a", "b"]
+
+
+async def test_verification_happens_exactly_once() -> None:
+    rig = Rig([make("a"), notify()])
+    await rig.run()
+    assert rig.types().count("verify_started") == 1
+    assert rig.adapter.verified == ["a"]
+
+
+async def test_a_read_that_keeps_failing_is_unconfirmed_not_failed() -> None:
+    rig = Rig(
+        [make("a"), notify()],
+        verify={"a": TransientToolError("timed out")},
+    )
+
+    # A scripted exception is raised on every read, so retries run out.
+    final = await rig.run()
+    assert final["status"] == "completed"
+    assert final["checks"][0].status == "unconfirmed"
+    assert len(rig.sleeps) == 3  # three retries, then it gives up
+
+
+async def test_a_service_error_while_reading_back_counts_as_failed() -> None:
+    rig = Rig(
+        [make("a"), notify()],
+        verify={"a": FatalToolError("object not found")},
+    )
+    final = await rig.run()
+    assert final["status"] == "rolled_back"
+    assert rig.adapter.undone == ["a"] and "ping" not in rig.adapter.calls
 
 
 # ------------------------------------------------------------------ understanding the request

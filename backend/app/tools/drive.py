@@ -20,6 +20,7 @@ from app.tools.base import (
     ToolContractError,
     ToolResult,
     UndoHandle,
+    VerifyResult,
 )
 from app.tools.mcp_servers import DRIVE_SERVER
 
@@ -129,7 +130,11 @@ class DriveAdapter(ToolAdapter):
             output={"file_id": file_id, "name": params.name},
             url=drive_file_url(file_id),
             undo_handle=UndoHandle(
-                tool=self.name, action="create_text_file", data={"file_id": file_id}
+                tool=self.name,
+                action="create_text_file",
+                # The folder is kept so verify looks where the file was really created
+                # (a step can override the default folder).
+                data={"file_id": file_id, "folder_id": folder},
             ),
         )
 
@@ -161,6 +166,25 @@ class DriveAdapter(ToolAdapter):
             + (" (more not shown)" if more else ""),
             output={"items": items, "more_available": more},
         )
+
+    async def _verify(self, handle: UndoHandle) -> VerifyResult:
+        file_id = handle.data.get("file_id")
+        if not file_id:
+            raise FatalToolError("Handle for drive.create_text_file has no file_id")
+        folder = handle.data.get("folder_id") or self._default_folder
+        listing = await self._list_folder(ListFolderParams(folder_id=folder))
+        if any(
+            item["id"] == file_id and not item["is_folder"]
+            for item in listing.output["items"]
+        ):
+            return VerifyResult(status="verified", detail="The file is in the folder.")
+        if listing.output["more_available"]:
+            # The listing shows only a first page, so absence proves nothing.
+            return VerifyResult(
+                status="unconfirmed",
+                detail="The folder has more items than could be listed.",
+            )
+        return VerifyResult(status="failed", detail="The file is not in the folder.")
 
     async def _undo(self, handle: UndoHandle) -> None:
         file_id = handle.data.get("file_id")

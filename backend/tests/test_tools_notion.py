@@ -205,3 +205,38 @@ def test_only_creating_a_page_is_reversible() -> None:
         name for name, spec in NotionAdapter.actions.items() if spec.reversible
     }
     assert reversible == {"create_page"}
+
+
+# ------------------------------------------------------------------ verify
+
+
+def page_handle(page_id: str = "page-123") -> UndoHandle:
+    return UndoHandle(tool="notion", action="create_page", data={"page_id": page_id})
+
+
+async def test_verify_confirms_a_page_that_exists() -> None:
+    mcp = FakeMcp(page_json("page-123"))
+    result = await adapter(mcp).verify(page_handle())
+    assert result.status == "verified"
+    assert mcp.calls == [("notion", "API-retrieve-a-page", {"page_id": "page-123"})]
+
+
+async def test_verify_fails_for_a_page_in_the_trash() -> None:
+    result = await adapter(FakeMcp(page_json(in_trash=True))).verify(page_handle())
+    assert result.status == "failed" and "trash" in result.detail
+
+
+@pytest.mark.parametrize(
+    "error", [FatalToolError("object not found"), TransientToolError("timed out")]
+)
+async def test_verify_lets_read_errors_through_for_the_caller_to_classify(
+    error: Exception,
+) -> None:
+    with pytest.raises(type(error)):
+        await adapter(FakeMcp(error)).verify(page_handle())
+
+
+async def test_verify_without_a_page_id_is_fatal() -> None:
+    handle = UndoHandle(tool="notion", action="create_page")
+    with pytest.raises(FatalToolError, match="no page_id"):
+        await adapter(FakeMcp()).verify(handle)

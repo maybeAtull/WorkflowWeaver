@@ -6,7 +6,7 @@ That gives the graph one uniform way to (1) run an action, (2) record how to und
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -61,6 +61,17 @@ class ToolResult(BaseModel):
     output: dict[str, Any] = Field(default_factory=dict)
     url: str | None = None  # link to the created item, for the report
     undo_handle: UndoHandle | None = None
+
+
+class VerifyResult(BaseModel):
+    """What reading a created item back from its service showed.
+
+    "failed" means definitely wrong (missing, in the trash); "unconfirmed" means we could
+    not tell, which is not evidence that the work failed.
+    """
+
+    status: Literal["verified", "failed", "unconfirmed"]
+    detail: str = ""
 
 
 class ActionSpec(BaseModel):
@@ -152,6 +163,23 @@ class ToolAdapter(ABC):
         if spec is None or not spec.reversible:
             raise FatalToolError(f"{self.name}.{handle.action} cannot be undone")
         await self._undo(handle)
+
+    async def verify(self, handle: UndoHandle) -> VerifyResult:
+        """Read a created item back from the service to confirm it is really there.
+
+        Tool errors propagate (a read that fails is the caller's to classify).
+        """
+        if handle.tool != self.name:
+            raise FatalToolError(
+                f"Handle belongs to {handle.tool!r}, not {self.name!r}"
+            )
+        return await self._verify(handle)
+
+    async def _verify(self, handle: UndoHandle) -> VerifyResult:
+        """Tools that can read their items back override this; the default says so honestly."""
+        return VerifyResult(
+            status="unconfirmed", detail="this kind of item cannot be checked"
+        )
 
     @abstractmethod
     async def _run(self, action: str, params: BaseModel) -> ToolResult:

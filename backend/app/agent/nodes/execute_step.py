@@ -97,6 +97,9 @@ def make_execute_node(deps: AgentDeps) -> Any:
             is_last=idx + 1 == len(plan),
             irreversible=irreversible,
             did_work=bool(state["completed"]),
+            verified=state["verified"],
+            next_is_irreversible=idx + 1 < len(plan)
+            and _is_irreversible(deps, plan[idx + 1]),
         )
         return update
 

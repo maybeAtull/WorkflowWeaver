@@ -19,6 +19,7 @@ from app.tools.base import (
     ToolAdapter,
     ToolResult,
     UndoHandle,
+    VerifyResult,
 )
 from app.tools.drive import DriveAdapter
 from app.tools.notifier import get_notifier
@@ -157,6 +158,10 @@ class ToolRegistry:
 
     async def undo(self, handle: UndoHandle) -> None:
         await self.adapter(handle.tool).undo(handle)
+
+    async def verify(self, handle: UndoHandle) -> VerifyResult:
+        """Read a created item back from its service (the handle names its tool)."""
+        return await self.adapter(handle.tool).verify(handle)
 
 
 def build_registry(

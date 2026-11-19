@@ -65,7 +65,9 @@ async def test_create_returns_the_id_a_link_and_an_undo_handle() -> None:
     assert result.output == {"file_id": "abc", "name": "notes.md"}
     assert result.url == "https://drive.google.com/file/d/abc/view"
     assert result.undo_handle == UndoHandle(
-        tool="drive", action="create_text_file", data={"file_id": "abc"}
+        tool="drive",
+        action="create_text_file",
+        data={"file_id": "abc", "folder_id": DEFAULT_FOLDER},
     )
 
 
@@ -211,3 +213,67 @@ def test_only_creating_a_file_is_reversible() -> None:
         name for name, spec in DriveAdapter.actions.items() if spec.reversible
     }
     assert reversible == {"create_text_file"}
+
+
+# ------------------------------------------------------------------ verify
+
+
+def file_handle(
+    file_id: str = "abc", folder: str | None = DEFAULT_FOLDER
+) -> UndoHandle:
+    data = {"file_id": file_id, **({"folder_id": folder} if folder else {})}
+    return UndoHandle(tool="drive", action="create_text_file", data=data)
+
+
+async def test_verify_confirms_a_file_that_is_listed() -> None:
+    mcp = FakeMcp(listing(f"{FILE_ICON} notes.md (ID: abc)"))
+    result = await adapter(mcp).verify(file_handle())
+    assert result.status == "verified"
+    assert mcp.calls == [("drive", "listFolder", {"folderId": DEFAULT_FOLDER})]
+
+
+async def test_verify_looks_in_the_folder_the_file_was_created_in() -> None:
+    mcp = FakeMcp(listing(f"{FILE_ICON} notes.md (ID: abc)"))
+    await adapter(mcp).verify(file_handle(folder="other-folder"))
+    assert mcp.calls[0][2] == {"folderId": "other-folder"}
+
+
+async def test_verify_falls_back_to_the_default_folder_without_one_in_the_handle() -> (
+    None
+):
+    mcp = FakeMcp(listing(f"{FILE_ICON} notes.md (ID: abc)"))
+    await adapter(mcp).verify(file_handle(folder=None))
+    assert mcp.calls[0][2] == {"folderId": DEFAULT_FOLDER}
+
+
+async def test_verify_fails_when_the_file_is_not_in_the_folder() -> None:
+    mcp = FakeMcp(listing(f"{FILE_ICON} other.md (ID: zzz)"))
+    result = await adapter(mcp).verify(file_handle())
+    assert result.status == "failed" and "not in the folder" in result.detail
+
+
+async def test_a_folder_with_the_same_id_does_not_count_as_the_file() -> None:
+    mcp = FakeMcp(listing(f"{FOLDER_ICON} stuff (ID: abc)"))
+    assert (await adapter(mcp).verify(file_handle())).status == "failed"
+
+
+async def test_a_truncated_listing_cannot_prove_absence() -> None:
+    mcp = FakeMcp(listing(f"{FILE_ICON} other.md (ID: zzz)", more=True))
+    result = await adapter(mcp).verify(file_handle())
+    assert result.status == "unconfirmed"
+
+
+async def test_verify_still_finds_the_file_in_a_truncated_listing() -> None:
+    mcp = FakeMcp(listing(f"{FILE_ICON} notes.md (ID: abc)", more=True))
+    assert (await adapter(mcp).verify(file_handle())).status == "verified"
+
+
+async def test_verify_without_a_file_id_is_fatal() -> None:
+    handle = UndoHandle(tool="drive", action="create_text_file")
+    with pytest.raises(FatalToolError, match="no file_id"):
+        await adapter(FakeMcp()).verify(handle)
+
+
+async def test_verify_lets_a_transient_read_error_through() -> None:
+    with pytest.raises(TransientToolError):
+        await adapter(FakeMcp(TransientToolError("timed out"))).verify(file_handle())

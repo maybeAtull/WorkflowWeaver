@@ -30,6 +30,7 @@ def make_report_node(deps: AgentDeps) -> Any:
                 }
                 for r in state["step_records"]
             ],
+            "checks": [c.model_dump() for c in state["checks"]],
             "rollback": [r.model_dump() for r in state["rollbacks"]],
         }
         # The last event of every run: it tells the browser the stream is over.

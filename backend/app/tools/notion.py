@@ -17,6 +17,7 @@ from app.tools.base import (
     ToolContractError,
     ToolResult,
     UndoHandle,
+    VerifyResult,
 )
 from app.tools.mcp_servers import NOTION_SERVER
 
@@ -179,6 +180,15 @@ class NotionAdapter(ToolAdapter):
             output={"page_id": str(page["id"]), "title": title, "in_trash": in_trash},
             url=page.get("url"),
         )
+
+    async def _verify(self, handle: UndoHandle) -> VerifyResult:
+        page_id = handle.data.get("page_id")
+        if not page_id:
+            raise FatalToolError("Handle for notion.create_page has no page_id")
+        page = await self._get_page(GetPageParams(page_id=page_id))
+        if page.output["in_trash"]:
+            return VerifyResult(status="failed", detail="The page is in the trash.")
+        return VerifyResult(status="verified", detail="The page exists in Notion.")
 
     async def _undo(self, handle: UndoHandle) -> None:
         page_id = handle.data.get("page_id")

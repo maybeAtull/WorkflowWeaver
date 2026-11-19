@@ -21,6 +21,8 @@ EventType = Literal[
     "step_succeeded",
     "step_retry",
     "step_failed",
+    "verify_started",
+    "verify_step",
     "rollback_started",
     "rollback_step",
     "run_completed",  # always the last event; carries the final status

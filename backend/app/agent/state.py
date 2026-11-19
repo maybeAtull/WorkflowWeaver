@@ -21,6 +21,7 @@ from app.tools.base import UndoHandle
 RunStatus = Literal[
     "planning",
     "running",
+    "verifying",  # reading the created items back, just before the irreversible notification
     "rolling_back",
     "completed",
     "completed_with_warning",
@@ -110,6 +111,16 @@ class RollbackRecord(BaseModel):
     detail: str = ""
 
 
+class VerifyRecord(BaseModel):
+    """Outcome of reading one created item back from its service."""
+
+    step_id: str
+    tool: str
+    action: str
+    status: Literal["verified", "failed", "unconfirmed"]
+    detail: str = ""
+
+
 class WorkflowState(TypedDict, total=False):
     run_id: str
     user_request: str
@@ -122,6 +133,10 @@ class WorkflowState(TypedDict, total=False):
     # Appended to (operator.add), never overwritten: a node returns only the NEW entries.
     completed: Annotated[list[CompletedAction], operator.add]
     rollbacks: Annotated[list[RollbackRecord], operator.add]
+    checks: Annotated[list[VerifyRecord], operator.add]
+    verified: (
+        bool  # True once the created items were read back (this happens only once)
+    )
     retries: int  # total retry attempts in this run (for the report and Langfuse score)
     error: str | None
     report: dict[str, Any] | None
@@ -142,6 +157,8 @@ def new_state(
         step_records=[],
         completed=[],
         rollbacks=[],
+        checks=[],
+        verified=False,
         retries=0,
         error=None,
         report=None,
