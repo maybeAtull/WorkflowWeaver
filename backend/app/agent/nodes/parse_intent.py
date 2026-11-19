@@ -1,4 +1,4 @@
-"""The parse-intent node: read the user's request into a compact `Intent` (one LLM call).
+﻿"""The parse-intent node: read the user's request into a compact `Intent` (one LLM call).
 
 Runs before planning so that (a) the long pasted notes travel in this call only, and the planner
 works from the small digest (matters on Groq's 8K tokens/minute), and (b) an unusable request
@@ -35,7 +35,7 @@ def make_llm_intent_parser(client: LlmClient) -> IntentParser:
             )
         try:
             intent = await client.ask(
-                INTENT_SYSTEM, intent_human_prompt(request), Intent
+                INTENT_SYSTEM, intent_human_prompt(request), Intent, name="parse_intent"
             )
         except LlmError as error:
             raise PlanningError(str(error)) from error

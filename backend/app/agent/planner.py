@@ -1,4 +1,4 @@
-"""The LLM planner: Intent + tool catalogue -> a validated list of steps (the second LLM call).
+﻿"""The LLM planner: Intent + tool catalogue -> a validated list of steps (the second LLM call).
 
 The model's output is never trusted. Step ids are assigned here, every step is validated by
 the tool registry, and the plan as a whole is checked (irreversible step last, exactly the
@@ -114,10 +114,10 @@ def make_llm_planner(client: LlmClient, registry: ToolRegistry) -> Planner:
     system = plan_system_prompt(registry.render_catalogue(), MAX_PLAN_STEPS)
 
     async def attempt(
-        human: str, requested: list[str]
+        human: str, requested: list[str], name: str
     ) -> tuple[list[PlanStep], list[str]]:
         try:
-            workflow = await client.ask(system, human, PlannedWorkflow)
+            workflow = await client.ask(system, human, PlannedWorkflow, name=name)
         except LlmError as error:
             raise PlanningError(str(error)) from error
         steps = [
@@ -147,12 +147,12 @@ def make_llm_planner(client: LlmClient, registry: ToolRegistry) -> Planner:
         requested = list(intent.requested_tools)
         human = plan_human_prompt(intent)
 
-        steps, problems = await attempt(human, requested)
+        steps, problems = await attempt(human, requested, "plan")
         if problems:
             # Names and messages only (see plan_problems), so this is safe to log.
             logger.warning("Plan rejected, repairing: %s", "; ".join(problems))
             steps, problems = await attempt(
-                plan_repair_prompt(human, problems), requested
+                plan_repair_prompt(human, problems), requested, "plan_repair"
             )
         if problems:
             logger.warning("Repaired plan still rejected: %s", "; ".join(problems))

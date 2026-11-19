@@ -1,4 +1,4 @@
-from typing import Any, cast
+﻿from typing import Any, cast
 
 import pytest
 
@@ -32,7 +32,9 @@ class FakeClient:
         self.result = result
         self.calls: list[tuple[str, str, type]] = []
 
-    async def ask(self, system: str, human: str, schema: type) -> Intent:
+    async def ask(
+        self, system: str, human: str, schema: type, name: str = ""
+    ) -> Intent:
         self.calls.append((system, human, schema))
         if isinstance(self.result, Exception):
             raise self.result

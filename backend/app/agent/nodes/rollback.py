@@ -1,4 +1,4 @@
-"""Rollback: undo everything a run already did, newest first, after a fatal failure.
+﻿"""Rollback: undo everything a run already did, newest first, after a fatal failure.
 
 Plain logic like the executor (no LLM, never raises). Two rules shape it:
   - One failed undo must not stop the others: cleaning up as much as possible beats giving up.
@@ -16,6 +16,7 @@ from app.agent.nodes.execute_step import StepContext, context_for
 from app.agent.retry import MAX_RETRIES
 from app.agent.routing import final_status_after_rollback
 from app.agent.state import CompletedAction, RollbackRecord, WorkflowState
+from app.observability.tracing import error_text
 from app.tools.base import ToolError, TransientToolError
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,18 @@ async def _undo_with_retry(action: CompletedAction, ctx: StepContext) -> None:
     retries = 0
     while True:
         try:
-            await ctx.registry.undo(action.undo_handle)
+            with ctx.tracer.span(
+                f"undo:{action.tool}.{action.action}",
+                as_type="tool",
+                input={"step_id": action.step_id},
+                metadata={"retry": retries},
+            ) as span:
+                try:
+                    await ctx.registry.undo(action.undo_handle)
+                except Exception as error:
+                    span.update(level="ERROR", status_message=error_text(error))
+                    raise
+                span.update(output={"undone": True})
             return
         except TransientToolError:
             if retries >= MAX_RETRIES:

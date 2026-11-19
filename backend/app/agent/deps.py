@@ -1,4 +1,4 @@
-"""What the graph's nodes need from the outside world, passed in rather than imported.
+﻿"""What the graph's nodes need from the outside world, passed in rather than imported.
 
 Keeping the registry, event bus and planner here (not in the state) means the state stays plain
 JSON-serializable data, and tests can swap in fakes without patching anything.
@@ -6,12 +6,13 @@ JSON-serializable data, and tests can swap in fakes without patching anything.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.agent.failure_injection import Injection
 from app.agent.retry import backoff_delay
 from app.agent.state import Intent, PlanStep, WorkflowState
 from app.events import EventBus
+from app.observability.tracing import NoopTracer, Tracer, guarded
 from app.tools.registry import ToolRegistry
 
 # Turns the user's request into ordered steps. The LLM planner (Task 2.6) is one
@@ -31,3 +32,10 @@ class AgentDeps:
     injection: Injection | None = None
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     backoff: Callable[[int], float] = backoff_delay
+    tracer: Tracer = field(default_factory=NoopTracer)
+    # Facts shown on the trace (LLM and notifier provider, model); empty in tests.
+    trace_context: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # Whatever tracer is passed in, a failing tracing backend must not fail a run.
+        self.tracer = guarded(self.tracer)

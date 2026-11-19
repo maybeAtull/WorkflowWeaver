@@ -1,4 +1,4 @@
-from typing import Any
+﻿from typing import Any
 
 import pytest
 
@@ -90,7 +90,7 @@ class FakeClient:
         self.script = list(script)
         self.calls: list[tuple[str, str]] = []
 
-    async def ask(self, system: str, human: str, schema: type) -> Any:
+    async def ask(self, system: str, human: str, schema: type, name: str = "") -> Any:
         assert schema is PlannedWorkflow
         self.calls.append((system, human))
         outcome = self.script.pop(0)

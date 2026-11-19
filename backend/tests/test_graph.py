@@ -11,6 +11,7 @@ from app.agent.graph import RECURSION_LIMIT, build_graph, run_workflow
 from app.agent.nodes.plan import MAX_PLAN_STEPS, PlanningError
 from app.agent.state import Intent, PlanStep, WorkflowState
 from app.events import EventBus
+from app.observability.tracing import NoopTracer, Tracer
 from app.tools.base import (
     ActionSpec,
     FatalToolError,
@@ -126,6 +127,8 @@ class Rig:
         injection: Injection | None = None,
         intent: Intent | Exception = INTENT,
         verify: dict[str, VerifyResult | Exception] | None = None,
+        tracer: Tracer | None = None,
+        trace_context: dict[str, str] | None = None,
     ) -> None:
         self.adapter = FakeAdapter(fail, undo_fail, verify)
         self.bus = EventBus()
@@ -155,6 +158,8 @@ class Rig:
             injection=injection,
             sleep=fake_sleep,
             backoff=float,
+            tracer=tracer or NoopTracer(),
+            trace_context=trace_context or {},
         )
 
     async def run(self, **inputs: Any) -> WorkflowState:

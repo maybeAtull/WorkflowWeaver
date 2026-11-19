@@ -1,4 +1,4 @@
-"""The verify node: read the created items back from their services before announcing success.
+﻿"""The verify node: read the created items back from their services before announcing success.
 
 It runs once, while everything is still undoable: just before the irreversible notification (or
 at the end of a plan without one). If it ran after the message went out, a missing item could not
@@ -18,6 +18,7 @@ from app.agent.deps import AgentDeps
 from app.agent.nodes.execute_step import StepContext, context_for
 from app.agent.retry import MAX_RETRIES
 from app.agent.state import CompletedAction, VerifyRecord, WorkflowState
+from app.observability.tracing import error_text
 from app.tools.base import ToolError, TransientToolError
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,20 @@ async def _check(action: CompletedAction, ctx: StepContext) -> VerifyRecord:
     retries = 0
     while True:
         try:
-            result = await ctx.registry.verify(action.undo_handle)
+            with ctx.tracer.span(
+                f"verify:{action.tool}.{action.action}",
+                as_type="tool",
+                input={"step_id": action.step_id},
+            ) as span:
+                try:
+                    result = await ctx.registry.verify(action.undo_handle)
+                except Exception as error:
+                    span.update(level="ERROR", status_message=error_text(error))
+                    raise
+                span.update(
+                    output={"status": result.status, "detail": result.detail},
+                    level=None if result.status == "verified" else "WARNING",
+                )
             return record(result.status, result.detail)
         except TransientToolError as error:
             # A read is always safe to repeat. If it keeps failing we simply cannot tell.

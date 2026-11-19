@@ -1,4 +1,4 @@
-"""One way for agent nodes to ask the LLM for a structured answer, and to fail politely.
+﻿"""One way for agent nodes to ask the LLM for a structured answer, and to fail politely.
 
 `LlmClient.ask(system, human, schema)` returns a validated Pydantic object or raises `LlmError`
 with a message that is safe to show the user: never the API key, never the user's own text,
@@ -17,12 +17,14 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, TypeVar
 
+from langchain_core.callbacks import get_usage_metadata_callback
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models.chat_models import BaseChatModel
 from pydantic import BaseModel, ValidationError
 
 from app.agent.retry import MAX_RETRIES, backoff_delay
 from app.llm import get_llm
+from app.observability.tracing import LLM_LIMIT, NoopTracer, Tracer, clip, guarded
 
 logger = logging.getLogger(__name__)
 
@@ -90,32 +92,50 @@ def classify_llm_error(exc: BaseException) -> LlmErrorKind:
     return "other"
 
 
+def usage_from_metadata(metadata: dict[str, Any]) -> dict[str, int] | None:
+    """Token counts for a span, summed over the models used (normally one). None when the
+    provider reported nothing: no usage is better than an invented one."""
+    totals = {"input": 0, "output": 0, "total": 0}
+    for usage in metadata.values():
+        totals["input"] += int(usage.get("input_tokens", 0))
+        totals["output"] += int(usage.get("output_tokens", 0))
+        totals["total"] += int(usage.get("total_tokens", 0))
+    return totals if totals["total"] or totals["input"] or totals["output"] else None
+
+
 class LlmClient:
     def __init__(
         self,
         model_factory: Callable[[], BaseChatModel] = get_llm,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         backoff: Callable[[int], float] = backoff_delay,
+        tracer: Tracer | None = None,
     ) -> None:
         # Built on first use, so creating the client (or the agent's deps) needs no API key.
         self._model_factory = model_factory
         self._model: BaseChatModel | None = None
         self._sleep = sleep
         self._backoff = backoff
+        self._tracer = guarded(tracer or NoopTracer())
 
     def _structured(self, schema: type[T]) -> Any:
         if self._model is None:
             self._model = self._model_factory()
         return self._model.with_structured_output(schema)
 
-    async def ask(self, system: str, human: str, schema: type[T]) -> T:
+    def _model_name(self) -> str | None:
+        return getattr(self._model, "model_name", None) or getattr(
+            self._model, "model", None
+        )
+
+    async def ask(
+        self, system: str, human: str, schema: type[T], name: str = "llm"
+    ) -> T:
+        """Ask for a structured answer. `name` labels the call in traces (llm:<name>)."""
         retries = 0
         while True:
             try:
-                answer = await self._structured(schema).ainvoke(
-                    [("system", system), ("human", human)]
-                )
-                return self._as_schema(answer, schema)
+                return await self._attempt(system, human, schema, name, retries + 1)
             except Exception as error:  # noqa: BLE001
                 # Provider libraries raise many exception types; all are classified below.
                 kind = classify_llm_error(error)
@@ -130,6 +150,41 @@ class LlmClient:
                     f"The AI service failed unexpectedly ({type(error).__name__}).",
                 )
                 raise LlmError(message, kind) from None
+
+    async def _attempt(
+        self, system: str, human: str, schema: type[T], name: str, attempt: int
+    ) -> T:
+        """One call to the model, recorded as a generation span (so every retry shows)."""
+        structured = self._structured(schema)
+        with self._tracer.span(
+            f"llm:{name}",
+            as_type="generation",
+            input=clip(
+                [
+                    {"role": "system", "content": system},
+                    {"role": "human", "content": human},
+                ],
+                LLM_LIMIT,
+            ),
+            metadata={"attempt": attempt},
+            model=self._model_name(),
+        ) as span:
+            try:
+                # Collects the token usage the provider reports for calls made inside it.
+                with get_usage_metadata_callback() as usage_callback:
+                    answer = await structured.ainvoke(
+                        [("system", system), ("human", human)]
+                    )
+                result = self._as_schema(answer, schema)
+            except Exception as error:
+                # The classification only: the message may hold the key or the user's text.
+                span.update(level="ERROR", status_message=classify_llm_error(error))
+                raise
+            span.update(
+                output=clip(result, LLM_LIMIT),
+                usage=usage_from_metadata(usage_callback.usage_metadata),
+            )
+            return result
 
     @staticmethod
     def _as_schema(answer: object, schema: type[T]) -> T:

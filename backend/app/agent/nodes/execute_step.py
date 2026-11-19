@@ -1,4 +1,4 @@
-"""Run ONE planned step safely: merge hidden params, execute, retry when safe, record the undo.
+﻿"""Run ONE planned step safely: merge hidden params, execute, retry when safe, record the undo.
 
 This is plain logic with no LLM and no graph, so every branch is unit-testable. Task 2.4 wraps
 it in a graph node; rollback (Task 2.3) consumes what it records. It never decides what comes
@@ -19,7 +19,14 @@ from app.agent.retry import MAX_RETRIES, backoff_delay
 from app.agent.routing import decide_after_step
 from app.agent.state import CompletedAction, PlanStep, StepRecord, WorkflowState
 from app.events import EventBus
-from app.tools.base import ActionSpec, ToolError, TransientToolError, is_safe_to_retry
+from app.observability.tracing import NoopTracer, Tracer, clip, error_text
+from app.tools.base import (
+    ActionSpec,
+    ToolError,
+    ToolResult,
+    TransientToolError,
+    is_safe_to_retry,
+)
 from app.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -36,6 +43,7 @@ class StepContext:
     injection: Injection | None = None
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     backoff: Callable[[int], float] = backoff_delay
+    tracer: Tracer = field(default_factory=NoopTracer)
 
 
 class StepOutcome(BaseModel):
@@ -56,6 +64,7 @@ def context_for(deps: AgentDeps, state: WorkflowState) -> StepContext:
         injection=deps.injection,
         sleep=deps.sleep,
         backoff=deps.backoff,
+        tracer=deps.tracer,
     )
 
 
@@ -200,9 +209,7 @@ async def _attempt_loop(
         attempt += 1
         record.attempts = attempt
         try:
-            if ctx.injection:
-                ctx.injection.check(step.id, position, attempt)
-            result = await ctx.registry.execute(step.tool, step.action, params)
+            result = await _traced_execute(step, position, ctx, params, attempt)
         except TransientToolError as error:
             retries_used = attempt - 1
             if retries_used >= MAX_RETRIES:
@@ -269,3 +276,36 @@ def _fail(
         attempts=record.attempts,
     )
     return StepOutcome(ok=False, record=record, retries_used=retries_used)
+
+
+async def _traced_execute(
+    step: PlanStep,
+    position: int,
+    ctx: StepContext,
+    params: dict[str, Any],
+    attempt: int,
+) -> ToolResult:
+    """One attempt at the tool call, as its own span, so every retry is visible in a trace.
+
+    The injected failure (if any) is raised inside the span too: a failure drill then shows up
+    in the trace exactly like a real failure would.
+    """
+    with ctx.tracer.span(
+        f"tool:{step.tool}.{step.action}",
+        as_type="tool",
+        input=clip(params),
+        metadata={"step_id": step.id, "attempt": attempt},
+    ) as span:
+        try:
+            if ctx.injection:
+                ctx.injection.check(step.id, position, attempt)
+            result = await ctx.registry.execute(step.tool, step.action, params)
+        except Exception as error:
+            span.update(level="ERROR", status_message=error_text(error))
+            raise
+        span.update(
+            output=clip(
+                {"summary": result.summary, "url": result.url, "output": result.output}
+            )
+        )
+        return result
