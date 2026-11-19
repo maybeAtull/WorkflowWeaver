@@ -71,12 +71,12 @@ class CompletedAction(BaseModel):
 
 
 class RollbackRecord(BaseModel):
-    """Outcome of undoing one completed action."""
+    """Outcome of undoing one completed action. "skipped" = irreversible (the notification)."""
 
     step_id: str
     tool: str
     action: str
-    status: Literal["undone", "failed"]
+    status: Literal["undone", "failed", "skipped"]
     detail: str = ""
 
 
