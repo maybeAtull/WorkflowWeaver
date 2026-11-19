@@ -116,3 +116,10 @@ def test_completed_is_appended_to_not_overwritten_by_the_graph() -> None:
 
     final = graph.compile().invoke(new_state("r", "req"))
     assert [c.step_id for c in final["completed"]] == ["s1", "s2"]
+
+
+def test_a_new_run_records_a_timezone_aware_start_time() -> None:
+    from datetime import datetime
+
+    started = datetime.fromisoformat(new_state("r", "req")["started_at"])
+    assert started.tzinfo is not None

@@ -1,4 +1,4 @@
-"""Run events: how nodes tell the outside world what the agent is doing.
+﻿"""Run events: how nodes tell the outside world what the agent is doing.
 
 Nodes call `bus.publish(...)`; they never touch the SSE stream. Phase 4's SSE endpoint just
 iterates `bus.subscribe(run_id)`. The bus keeps each run's history, so a browser that
@@ -9,10 +9,11 @@ The event names below are the contract with the frontend; keep the list short.
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+from app.clock import utc_now
 
 EventType = Literal[
     "run_started",
@@ -31,8 +32,7 @@ TERMINAL_EVENT: EventType = "run_completed"
 
 
 def _now() -> str:
-    # timezone.utc rather than datetime.UTC: the project supports Python 3.10.
-    return datetime.now(timezone.utc).isoformat()  # noqa: UP017
+    return utc_now().isoformat()
 
 
 class RunEvent(BaseModel):

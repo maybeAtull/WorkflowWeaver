@@ -512,3 +512,40 @@ def test_the_graph_can_draw_itself_for_the_docs() -> None:
         "write_report",
     ):
         assert node in diagram
+
+
+# ------------------------------------------------------------------ the report
+
+
+async def test_the_final_event_and_the_report_carry_the_same_plain_headline() -> None:
+    rig = Rig([make("a"), notify()])
+    final = await rig.run()
+    report = final["report"]
+    assert report is not None
+    assert report["headline"] == (
+        "Done: all 2 steps finished and the created items were confirmed."
+    )
+    last = rig.bus.history("r")[-1]
+    assert last.type == "run_completed" and last.data["headline"] == report["headline"]
+    assert report["title"] == "Weekly sync" and report["duration_seconds"] >= 0
+    assert [c["label"] for c in report["created"]] == ["make a"]
+
+
+async def test_after_a_rollback_the_report_lists_nothing_as_created() -> None:
+    rig = Rig([make("a"), make("b")], fail={"b": [FatalToolError("boom")]})
+    report = (await rig.run())["report"]
+    assert report is not None
+    assert report["created"] == [] and report["status"] == "rolled_back"
+    assert report["headline"].startswith("Stopped. Everything that had been created")
+
+
+async def test_a_failed_undo_shows_up_in_the_reports_cleanup_list() -> None:
+    rig = Rig(
+        [make("a"), make("b")],
+        fail={"b": [FatalToolError("boom")]},
+        undo_fail={"a": [FatalToolError("cannot delete")]},
+    )
+    report = (await rig.run())["report"]
+    assert report is not None and report["status"] == "failed"
+    assert [item["label"] for item in report["needs_cleanup"]] == ["make a"]
+    assert report["needs_cleanup"][0]["url"] == "https://example.test/a"

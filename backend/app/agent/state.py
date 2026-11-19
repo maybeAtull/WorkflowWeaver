@@ -1,4 +1,4 @@
-"""The agent's state: everything the graph knows about one run, in one place.
+﻿"""The agent's state: everything the graph knows about one run, in one place.
 
 LangGraph needs the top-level state to be a TypedDict (its reducers work on keys); the values
 inside are Pydantic models so they are validated and JSON-serializable. That matters later:
@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
+from app.clock import utc_now
 from app.tools.base import UndoHandle
 
 # planning -> running -> one of the four final states. "rolling_back" is the detour taken after
@@ -138,6 +139,7 @@ class WorkflowState(TypedDict, total=False):
         bool  # True once the created items were read back (this happens only once)
     )
     retries: int  # total retry attempts in this run (for the report and Langfuse score)
+    started_at: str  # ISO UTC timestamp; the report derives the duration from it
     error: str | None
     report: dict[str, Any] | None
 
@@ -160,6 +162,7 @@ def new_state(
         checks=[],
         verified=False,
         retries=0,
+        started_at=utc_now().isoformat(),
         error=None,
         report=None,
     )
