@@ -1,4 +1,4 @@
-"""The live trace check's fakes and assertions, proven offline, so the live run tests only Langfuse.
+﻿"""The live trace check's fakes and assertions, proven offline, so the live run tests only Langfuse.
 
 The synthetic workflow runs here against the in-memory recorder: if its tree contains every edge
 the live check will look for, then a failure against real Langfuse can only be about Langfuse.
@@ -67,6 +67,9 @@ async def test_the_synthetic_workflow_has_a_retry_and_real_token_usage(
         for g in generations
     )
     assert tracer.trace["tags"][:2] == ["workflowweaver", "run:abc12345"]
+    # The trace is labelled as synthetic, not with the settings' real provider.
+    assert tracer.trace["metadata"]["llm_provider"] == "synthetic"
+    assert "llm:synthetic" in tracer.trace["tags"]
 
 
 # ------------------------------------------------------------------ the assertions themselves
@@ -82,8 +85,7 @@ def observation(
         "level": "DEFAULT",
         "usage_details": None,
         "model": None,
-        "tags": None,
-        "trace_name": None,
+        "metadata": None,
         "session_id": None,
         "version": None,
     }
@@ -106,10 +108,13 @@ def good_trace(run_id: str = "r1") -> list[SimpleNamespace]:
             ids["workflow-run"],
             "workflow-run",
             None,
-            trace_name="workflow-run",
             session_id=run_id,
             version=smoke_trace.PROMPT_VERSION,
-            tags=["workflowweaver", f"run:{run_id}"],
+            metadata={
+                "run_id": run_id,
+                "prompt_version": smoke_trace.PROMPT_VERSION,
+                "llm_provider": smoke_trace.SYNTHETIC_PROVIDER,
+            },
         )
     )
     out.append(
@@ -154,3 +159,22 @@ def test_missing_usage_or_wrong_attributes_fail() -> None:
             o.usage_details = None
     assert check(no_usage, "r1") is False
     assert check(good_trace("r1"), "other-run") is False  # the session id must match
+
+
+def test_the_trace_metadata_must_match_the_run() -> None:
+    trace = good_trace("r1")
+    root = next(o for o in trace if o.parent_observation_id is None)
+    root.metadata = {
+        "run_id": "someone-else",
+        "prompt_version": "2",
+        "llm_provider": "synthetic",
+    }
+    assert check(trace, "r1") is False
+
+
+def test_metadata_values_are_never_printed(capsys: pytest.CaptureFixture[str]) -> None:
+    trace = good_trace("r1")
+    root = next(o for o in trace if o.parent_observation_id is None)
+    root.metadata["scope.attributes.public_key"] = "pk-lf-should-not-appear"
+    check(trace, "r1")
+    assert "pk-lf" not in capsys.readouterr().out

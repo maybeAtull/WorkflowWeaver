@@ -42,6 +42,7 @@ from app.tools.base import TransientToolError
 VERIFY_TIMEOUT_SECONDS = 90
 VERIFY_POLL_SECONDS = 4
 MODEL_NAME = "synthetic-model"
+SYNTHETIC_PROVIDER = "synthetic"
 REQUEST = "Synthetic request: put the notes in Notion and Drive and tell the team."
 DRIVE_ID = "smoke-file-1"
 PAGE_JSON = (
@@ -175,6 +176,13 @@ async def run_synthetic_workflow(
         simulate="",
         tracer=tracer,
     )
+    # The deps label the trace with the settings' real provider and model; this run uses a
+    # fake model, so say so rather than let the trace claim otherwise.
+    deps.trace_context = {
+        "llm_provider": SYNTHETIC_PROVIDER,
+        "llm_model": MODEL_NAME,
+        "notifier_provider": settings.notifier_provider,
+    }
     final = await run_workflow(deps, run_id, REQUEST)
     await asyncio.to_thread(tracer.flush)
     await http.aclose()
@@ -187,7 +195,7 @@ async def run_synthetic_workflow(
 def read_observations(tracer: LangfuseTracer, trace_id: str) -> list[Any]:
     found: list[Any] = []
     pages = tracer.client.iter_observation_pages(
-        trace_id=trace_id, fields="core,basic,io,usage,model"
+        trace_id=trace_id, fields="core,basic,io,usage,model,metadata"
     )
     for page in pages:
         found.extend(page.data)
@@ -256,19 +264,24 @@ def check(observations: list[Any], run_id: str) -> bool:
 
     root = roots[0] if roots else None
     if root is not None:
-        tags = set(root.tags or [])
+        # Only what the read-back API really returns is asserted. The trace NAME and TAGS are
+        # not returned by any field group in Langfuse 5.2, so those are checked by eye in the
+        # Langfuse UI (see the note printed at the end). Metadata values are never printed: the
+        # SDK adds its own entries there, including the (public) key.
+        metadata = root.metadata if isinstance(root.metadata, dict) else {}
         attributes_ok = (
-            root.trace_name == "workflow-run"
-            and root.session_id == run_id
+            root.session_id == run_id
             and root.version == PROMPT_VERSION
-            and {"workflowweaver", f"run:{run_id}"} <= tags
+            and str(metadata.get("run_id")) == run_id
+            and str(metadata.get("prompt_version")) == PROMPT_VERSION
+            and str(metadata.get("llm_provider")) == SYNTHETIC_PROVIDER
         )
         results.append(
             report(
-                "trace attributes (name, session, version, tags)",
+                "trace attributes (session, version, metadata)",
                 attributes_ok,
-                f"name={root.trace_name}, session_ok={root.session_id == run_id}, "
-                f"version={root.version}, tags={sorted(tags)}",
+                f"session_ok={root.session_id == run_id}, version={root.version}, "
+                f"metadata_run_id_ok={str(metadata.get('run_id')) == run_id}",
             )
         )
     return all(results)
@@ -294,6 +307,10 @@ def main() -> int:
         observations = wait_for_trace(tracer, trace_id)
         ok = check(observations, run_id) and status == "completed"
         print(f"\nLangfuse trace: {url}")
+        print(
+            "Check by eye in that page (the read-back API cannot return them): the trace "
+            f"name is 'workflow-run' and the tags include 'workflowweaver' and 'run:{run_id}'."
+        )
         return 0 if ok else 1
     finally:
         tracer.shutdown()
