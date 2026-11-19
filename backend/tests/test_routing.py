@@ -4,10 +4,12 @@ import pytest
 
 from app.agent.routing import (
     EXECUTE,
+    PLAN,
     REPORT,
     ROLLBACK,
     decide_after_step,
     final_status_after_rollback,
+    route_after_intent,
     route_after_plan,
     route_after_step,
 )
@@ -71,6 +73,11 @@ def test_final_status_after_rollback(
     completed: list[CompletedAction], records: list[RollbackRecord], expected: str
 ) -> None:
     assert final_status_after_rollback(completed, records) == expected
+
+
+def test_an_unusable_request_goes_straight_to_the_report() -> None:
+    assert route_after_intent(state("failed")) == REPORT
+    assert route_after_intent(state("planning")) == PLAN
 
 
 def test_a_failed_plan_goes_straight_to_the_report() -> None:

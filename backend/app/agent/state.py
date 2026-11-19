@@ -34,6 +34,36 @@ FINAL_STATUSES: frozenset[str] = frozenset(
 StepStatus = Literal["pending", "running", "succeeded", "failed", "skipped"]
 
 
+IntentKind = Literal["meeting_notes", "incident", "sprint_planning", "other"]
+ToolName = Literal["notion", "drive", "notifier"]
+
+
+class ActionItem(BaseModel):
+    task: str
+    owner: str  # "" when the request does not say
+    due: str  # "" when the request does not say
+
+
+class Intent(BaseModel):
+    """A compact digest of the user's request, written by the intake LLM call.
+
+    Every field is required and unknown values are empty strings or lists: no optionals and
+    no free-form dicts, because strict structured-output modes on some providers reject
+    them, and one schema must work on all of them. No length limits in the schema for the same
+    reason; the parser trims what it must.
+    """
+
+    title: str
+    summary: str
+    kind: IntentKind
+    action_items: list[ActionItem]
+    decisions: list[str]
+    # Which tools the user explicitly asked for; the planner's output is checked against it.
+    requested_tools: list[ToolName]
+    # A question for the user when the request is unusable ("" normally).
+    clarification_needed: str
+
+
 class PlanStep(BaseModel):
     """One planned action. `params` is what the planner (LLM) chose; hidden parameters such
     as folder ids are merged in by the executor, never by the LLM."""
@@ -85,6 +115,7 @@ class WorkflowState(TypedDict, total=False):
     user_request: str
     inputs: dict[str, Any]  # values chosen in the UI (parent page, folder, ...)
     status: RunStatus
+    intent: Intent | None
     plan: list[PlanStep]
     current_idx: int  # index of the step to run next
     step_records: list[StepRecord]
@@ -105,6 +136,7 @@ def new_state(
         user_request=user_request,
         inputs=dict(inputs or {}),
         status="planning",
+        intent=None,
         plan=[],
         current_idx=0,
         step_records=[],

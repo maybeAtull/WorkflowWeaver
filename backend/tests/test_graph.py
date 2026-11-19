@@ -9,7 +9,7 @@ from app.agent.deps import AgentDeps
 from app.agent.failure_injection import Injection
 from app.agent.graph import RECURSION_LIMIT, build_graph, run_workflow
 from app.agent.nodes.plan import MAX_PLAN_STEPS, PlanningError
-from app.agent.state import PlanStep, WorkflowState
+from app.agent.state import Intent, PlanStep, WorkflowState
 from app.events import EventBus
 from app.tools.base import (
     ActionSpec,
@@ -20,6 +20,16 @@ from app.tools.base import (
     UndoHandle,
 )
 from app.tools.registry import ToolRegistry
+
+INTENT = Intent(
+    title="Weekly sync",
+    summary="A short fictional sync.",
+    kind="meeting_notes",
+    action_items=[],
+    decisions=[],
+    requested_tools=[],
+    clarification_needed="",
+)
 
 
 class Params(BaseModel):
@@ -98,9 +108,18 @@ class Rig:
         fail: dict[str, list[Exception]] | None = None,
         undo_fail: dict[str, list[Exception]] | None = None,
         injection: Injection | None = None,
+        intent: Intent | Exception = INTENT,
     ) -> None:
         self.adapter = FakeAdapter(fail, undo_fail)
         self.bus = EventBus()
+        self.intent_calls = 0
+
+        async def intent_parser(state: WorkflowState) -> Intent:
+            self.intent_calls += 1
+            if isinstance(intent, Exception):
+                raise intent
+            return intent
+
         self.sleeps: list[float] = []
 
         async def planner(state: WorkflowState) -> list[PlanStep]:
@@ -115,6 +134,7 @@ class Rig:
             registry=ToolRegistry([self.adapter]),
             bus=self.bus,
             planner=planner,
+            intent_parser=intent_parser,
             injection=injection,
             sleep=fake_sleep,
             backoff=float,
@@ -309,10 +329,60 @@ async def test_a_full_length_plan_that_rolls_back_stays_inside_the_recursion_lim
     assert RECURSION_LIMIT >= MAX_PLAN_STEPS + 3  # plan + steps + rollback + report
 
 
+# ------------------------------------------------------------------ understanding the request
+
+
+async def test_the_parsed_intent_is_stored_in_the_state() -> None:
+    final = await Rig([make("a")]).run()
+    assert final["intent"] == INTENT
+
+
+async def test_the_planner_sees_the_intent() -> None:
+    rig = Rig([make("a")])
+    seen: list[Intent | None] = []
+    inner = rig.deps.planner
+
+    async def spying_planner(state: WorkflowState) -> list[PlanStep]:
+        seen.append(state["intent"])
+        return await inner(state)
+
+    rig.deps.planner = spying_planner
+    await rig.run()
+    assert seen == [INTENT]
+
+
+@pytest.mark.parametrize(
+    "intent",
+    [PlanningError("What should the page say?"), RuntimeError("secret user text")],
+)
+async def test_a_request_that_cannot_be_understood_stops_before_planning_or_any_tool(
+    intent: Exception,
+) -> None:
+    rig = Rig([make("a")], intent=intent)
+    final = await rig.run()
+    assert final["status"] == "failed" and final["intent"] is None
+    assert rig.adapter.calls == [] and final["plan"] == []
+    assert rig.types() == ["run_started", "run_completed"]
+    assert "secret user text" not in (final["error"] or "")
+
+
+async def test_a_clarifying_question_reaches_the_user_as_the_error() -> None:
+    final = await Rig(
+        [make("a")], intent=PlanningError("What should the page say?")
+    ).run()
+    assert final["error"] == "What should the page say?"
+
+
 # ------------------------------------------------------------------ structure
 
 
 def test_the_graph_can_draw_itself_for_the_docs() -> None:
     diagram = build_graph(Rig([make("a")]).deps).get_graph().draw_mermaid()
-    for node in ("plan_steps", "execute_step", "roll_back", "write_report"):
+    for node in (
+        "parse_intent",
+        "plan_steps",
+        "execute_step",
+        "roll_back",
+        "write_report",
+    ):
         assert node in diagram

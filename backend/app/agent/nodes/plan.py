@@ -24,17 +24,19 @@ def make_plan_node(deps: AgentDeps) -> Any:
         try:
             steps = await deps.planner(state)
         except PlanningError as error:
-            return _failed(str(error))
+            return failed_update(str(error))
         except Exception as error:  # noqa: BLE001
             # A planner bug must end the run cleanly. Log the type only: the message could
             # contain the user's request text.
             logger.error("Planner crashed: %s", type(error).__name__)
-            return _failed(f"Planning failed unexpectedly ({type(error).__name__})")
+            return failed_update(
+                f"Planning failed unexpectedly ({type(error).__name__})"
+            )
 
         if not steps:
-            return _failed("The request did not lead to any steps to run.")
+            return failed_update("The request did not lead to any steps to run.")
         if len(steps) > MAX_PLAN_STEPS:
-            return _failed(
+            return failed_update(
                 f"The plan has {len(steps)} steps; at most {MAX_PLAN_STEPS} are allowed."
             )
 
@@ -53,5 +55,5 @@ def make_plan_node(deps: AgentDeps) -> Any:
     return plan_steps
 
 
-def _failed(message: str) -> dict[str, Any]:
+def failed_update(message: str) -> dict[str, Any]:
     return {"status": "failed", "error": message}

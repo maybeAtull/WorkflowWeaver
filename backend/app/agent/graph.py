@@ -1,6 +1,6 @@
 """The LangGraph that runs a workflow: plan -> execute each step -> (rollback) -> report.
 
-    plan_steps -> execute_step (loops once per step) -> write_report
+    parse_intent -> plan_steps -> execute_step (loops once per step) -> write_report
                        |
                        +-- fatal failure --> roll_back --> write_report
 
@@ -13,32 +13,37 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agent.deps import AgentDeps
 from app.agent.nodes.execute_step import make_execute_node
+from app.agent.nodes.parse_intent import make_parse_intent_node
 from app.agent.nodes.plan import MAX_PLAN_STEPS, make_plan_node
 from app.agent.nodes.report import make_report_node
 from app.agent.nodes.rollback import make_rollback_node
 from app.agent.routing import (
     EXECUTE,
+    PARSE_INTENT,
     PLAN,
     REPORT,
     ROLLBACK,
+    route_after_intent,
     route_after_plan,
     route_after_step,
 )
 from app.agent.state import WorkflowState, new_state
 
-# plan + every step + rollback + report, with headroom. LangGraph counts each node visit, so
+# intent + plan + every step + rollback + report, with headroom. LangGraph counts each node visit, so
 # its default limit (25) would be a hidden cap; this sets it on purpose, and bounds a runaway loop.
 RECURSION_LIMIT = MAX_PLAN_STEPS + 10
 
 
 def build_graph(deps: AgentDeps) -> Any:
     graph = StateGraph(WorkflowState)
+    graph.add_node(PARSE_INTENT, make_parse_intent_node(deps))
     graph.add_node(PLAN, make_plan_node(deps))
     graph.add_node(EXECUTE, make_execute_node(deps))
     graph.add_node(ROLLBACK, make_rollback_node(deps))
     graph.add_node(REPORT, make_report_node(deps))
 
-    graph.add_edge(START, PLAN)
+    graph.add_edge(START, PARSE_INTENT)
+    graph.add_conditional_edges(PARSE_INTENT, route_after_intent, [PLAN, REPORT])
     graph.add_conditional_edges(PLAN, route_after_plan, [EXECUTE, REPORT])
     graph.add_conditional_edges(EXECUTE, route_after_step, [EXECUTE, ROLLBACK, REPORT])
     graph.add_edge(ROLLBACK, REPORT)

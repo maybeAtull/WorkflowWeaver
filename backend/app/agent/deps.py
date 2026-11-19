@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from app.agent.failure_injection import Injection
 from app.agent.retry import backoff_delay
-from app.agent.state import PlanStep, WorkflowState
+from app.agent.state import Intent, PlanStep, WorkflowState
 from app.events import EventBus
 from app.tools.registry import ToolRegistry
 
@@ -18,6 +18,8 @@ from app.tools.registry import ToolRegistry
 # implementation; tests use fixed plans. It may raise PlanningError with a message that is
 # safe to show the user.
 Planner = Callable[[WorkflowState], Awaitable[list[PlanStep]]]
+# Reads the user's request into an Intent (Task 2.5). Same contract: may raise PlanningError.
+IntentParser = Callable[[WorkflowState], Awaitable[Intent]]
 
 
 @dataclass
@@ -25,6 +27,7 @@ class AgentDeps:
     registry: ToolRegistry
     bus: EventBus
     planner: Planner
+    intent_parser: IntentParser
     injection: Injection | None = None
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     backoff: Callable[[int], float] = backoff_delay

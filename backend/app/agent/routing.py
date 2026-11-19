@@ -18,6 +18,7 @@ from app.agent.state import (
 )
 
 # Names of the graph's nodes (they must differ from the state's keys, e.g. "plan", "report").
+PARSE_INTENT = "parse_intent"
 PLAN = "plan_steps"
 EXECUTE = "execute_step"
 ROLLBACK = "roll_back"
@@ -41,6 +42,10 @@ def final_status_after_rollback(
     if not completed or any(r.status == "failed" for r in records):
         return "failed"
     return "rolled_back" if any(r.status == "undone" for r in records) else "failed"
+
+
+def route_after_intent(state: WorkflowState) -> Literal["plan_steps", "write_report"]:
+    return REPORT if state["status"] == "failed" else PLAN  # type: ignore[return-value]
 
 
 def route_after_plan(state: WorkflowState) -> Literal["execute_step", "write_report"]:

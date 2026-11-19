@@ -2,7 +2,9 @@ from langgraph.graph import END, START, StateGraph
 
 from app.agent.state import (
     FINAL_STATUSES,
+    ActionItem,
     CompletedAction,
+    Intent,
     PlanStep,
     RollbackRecord,
     StepRecord,
@@ -56,6 +58,29 @@ def test_models_round_trip_through_json() -> None:
     ]
     for model in models:
         assert type(model).model_validate_json(model.model_dump_json()) == model
+
+
+def test_a_new_run_has_no_intent_yet_and_an_intent_round_trips_through_json() -> None:
+    assert new_state("r", "req")["intent"] is None
+    intent = Intent(
+        title="T",
+        summary="S",
+        kind="incident",
+        action_items=[ActionItem(task="Fix it", owner="Sam", due="")],
+        decisions=["Roll back the release"],
+        requested_tools=["notion", "notifier"],
+        clarification_needed="",
+    )
+    assert Intent.model_validate_json(intent.model_dump_json()) == intent
+
+
+def test_the_intent_schema_has_only_required_fields_for_strict_providers() -> None:
+    """No optionals or defaults: strict structured-output modes reject them."""
+    schema = Intent.model_json_schema()
+    assert set(schema["required"]) == set(schema["properties"])
+    # A free-form dict field would show up as "additionalProperties" in the schema.
+    assert "additionalProperties" not in str(schema)
+    assert "default" not in str(schema)
 
 
 def test_an_irreversible_action_has_no_undo_handle() -> None:
