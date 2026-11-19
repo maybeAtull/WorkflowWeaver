@@ -79,7 +79,11 @@ class FakeAdapter(ToolAdapter):
             if action == "make"
             else None
         )
-        return ToolResult(summary=f"{action} {params.title}", undo_handle=handle)
+        return ToolResult(
+            summary=f"{action} {params.title}",
+            url=f"https://example.test/{params.title}" if action == "make" else None,
+            undo_handle=handle,
+        )
 
     async def _undo(self, handle: UndoHandle) -> None:
         item = handle.data["id"]
@@ -186,6 +190,25 @@ async def test_the_report_summarises_every_step() -> None:
     assert report is not None and report["status"] == "completed"
     assert [s["id"] for s in report["steps"]] == ["s-a", "s-ping"]
     assert report["rollback"] == [] and report["retries"] == 0
+
+
+async def test_the_notification_receives_links_to_the_items_that_were_created() -> None:
+    rig = Rig([make("a"), make("b"), notify()])
+    sent: list[dict[str, Any]] = []
+    original = rig.deps.registry.execute
+
+    async def spy(tool: str, action: str, params: Any) -> ToolResult:
+        if action == "notify":
+            sent.append(dict(params))
+        return await original(tool, action, params)
+
+    rig.deps.registry.execute = spy  # type: ignore[method-assign]
+    await rig.run()
+    assert sent[0]["status"] == "success"
+    assert sent[0]["links"] == [
+        {"label": "make a", "url": "https://example.test/a"},
+        {"label": "make b", "url": "https://example.test/b"},
+    ]
 
 
 async def test_ui_inputs_reach_the_tool_as_hidden_parameters() -> None:

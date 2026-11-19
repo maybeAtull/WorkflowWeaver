@@ -69,7 +69,13 @@ def make_execute_node(deps: AgentDeps) -> Any:
         idx = state["current_idx"]
         plan = state["plan"]
         step = plan[idx]
-        outcome = await run_step(step, idx + 1, context_for(deps, state))
+        irreversible = _is_irreversible(deps, step)
+        outcome = await run_step(
+            step,
+            idx + 1,
+            context_for(deps, state),
+            notification_extras(state["completed"]) if irreversible else None,
+        )
 
         records = list(state["step_records"])
         records[idx] = outcome.record
@@ -89,12 +95,36 @@ def make_execute_node(deps: AgentDeps) -> Any:
         update["status"] = decide_after_step(
             ok=outcome.ok,
             is_last=idx + 1 == len(plan),
-            irreversible=_is_irreversible(deps, step),
+            irreversible=irreversible,
             did_work=bool(state["completed"]),
         )
         return update
 
     return execute_step
+
+
+MAX_LINKS = 10  # the notification's own limit
+MAX_LABEL_CHARS = 100
+
+
+def notification_extras(completed: list[CompletedAction]) -> dict[str, Any]:
+    """What the final notification needs but the planner cannot know: links to the items that
+    were really created, and the status. Built from results only, so a link can never be
+    invented. Only http(s) URLs are used, matching what the notifier accepts."""
+    links = [
+        {
+            "label": (action.summary or f"{action.tool}.{action.action}")[
+                :MAX_LABEL_CHARS
+            ],
+            "url": action.url,
+        }
+        for action in completed
+        if action.url and action.url.lower().startswith(("http://", "https://"))
+    ][:MAX_LINKS]
+    extras: dict[str, Any] = {"status": "success"}
+    if links:
+        extras["links"] = links
+    return extras
 
 
 def _is_irreversible(deps: AgentDeps, step: PlanStep) -> bool:
@@ -120,8 +150,17 @@ def merge_hidden_params(
     return merged
 
 
-async def run_step(step: PlanStep, position: int, ctx: StepContext) -> StepOutcome:
-    """Execute `step` (1-based `position` in the plan). Returns an outcome; never raises."""
+async def run_step(
+    step: PlanStep,
+    position: int,
+    ctx: StepContext,
+    extra_params: Mapping[str, Any] | None = None,
+) -> StepOutcome:
+    """Execute `step` (1-based `position` in the plan). Returns an outcome; never raises.
+
+    `extra_params` are values only known at run time (see `notification_extras`); they are
+    added on top of the plan's params without changing the step shown in the record.
+    """
     record = StepRecord(step=step, status="running")
     ctx.bus.publish(
         ctx.run_id,
@@ -135,6 +174,7 @@ async def run_step(step: PlanStep, position: int, ctx: StepContext) -> StepOutco
     try:
         spec = ctx.registry.spec(step.tool, step.action)
         params = merge_hidden_params(spec, step.params, ctx.inputs)
+        params.update(extra_params or {})
         return await _attempt_loop(step, position, ctx, spec, params, record)
     except ToolError as error:  # e.g. an unknown tool or action
         return _fail(ctx, record, str(error))

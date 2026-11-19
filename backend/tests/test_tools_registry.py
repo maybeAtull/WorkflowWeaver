@@ -105,11 +105,27 @@ def test_required_parameters_are_starred_and_nested_shapes_are_compact(
     }
     assert "title*: text" in lines["notion.create_page"]
     assert "name*: text" in lines["drive.create_text_file"]
-    send = lines["notifier.send"]
-    assert "title*: text" in send
-    assert "status: success|warning|failure" in send
-    assert "facts: list of {name, value}" in send
-    assert "links: list of {label, url}" in send
+    assert "title*: text" in lines["notifier.send"]
+    # A nested shape is rendered compactly (this one is a Notion list parameter).
+    assert "action_items: list of text" in lines["notion.create_page"]
+
+
+def test_the_planner_cannot_see_what_the_executor_fills_in_for_the_notification(
+    registry: ToolRegistry,
+) -> None:
+    send = next(
+        line
+        for line in registry.render_catalogue().splitlines()
+        if line.startswith("notifier.send")
+    )
+    for hidden in ("status", "facts", "links"):
+        assert hidden not in send.split(" - ")[0]
+    problems = registry.validate_step(
+        "notifier",
+        "send",
+        {"title": "ok", "links": [{"label": "a", "url": "https://x"}]},
+    )
+    assert any("unknown parameter(s) ['links']" in p for p in problems)
 
 
 def test_the_catalogue_stays_small_enough_for_a_free_tier_prompt(
@@ -126,7 +142,7 @@ def test_a_valid_step_has_no_problems(registry: ToolRegistry) -> None:
     assert registry.validate_step("drive", "create_text_file", {"name": "n.md"}) == []
     assert (
         registry.validate_step(
-            "notifier", "send", {"title": "Done", "status": "warning"}
+            "notifier", "send", {"title": "Done", "summary": "All finished."}
         )
         == []
     )

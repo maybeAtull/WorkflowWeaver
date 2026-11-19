@@ -7,9 +7,10 @@ from app.agent.failure_injection import Injection
 from app.agent.nodes.execute_step import (
     StepContext,
     merge_hidden_params,
+    notification_extras,
     run_step,
 )
-from app.agent.state import PlanStep
+from app.agent.state import CompletedAction, PlanStep
 from app.events import EventBus
 from app.tools.base import (
     ActionSpec,
@@ -248,3 +249,52 @@ async def test_injection_by_position_targets_the_right_step(position: int) -> No
     rig = Rig(injection=Injection("2", "fatal"))
     outcome = await run_step(step(), position, rig.ctx)
     assert outcome.ok is (position != 2)
+
+
+# ------------------------------------------------------------------ notification extras
+
+
+def _done(step_id: str, summary: str, url: str | None) -> CompletedAction:
+    return CompletedAction(
+        step_id=step_id, tool="fake", action="make", summary=summary, url=url
+    )
+
+
+def test_the_notification_gets_links_to_what_was_really_created() -> None:
+    extras = notification_extras(
+        [
+            _done("s1", "Created Notion page", "https://notion.example/p1"),
+            _done("s2", "Created Drive file", "http://drive.example/f1"),
+        ]
+    )
+    assert extras == {
+        "status": "success",
+        "links": [
+            {"label": "Created Notion page", "url": "https://notion.example/p1"},
+            {"label": "Created Drive file", "url": "http://drive.example/f1"},
+        ],
+    }
+
+
+def test_items_without_a_usable_url_are_left_out_of_the_links() -> None:
+    extras = notification_extras(
+        [
+            _done("s1", "no url", None),
+            _done("s2", "ftp", "ftp://example.test/x"),
+            _done("s3", "script", "javascript:alert(1)"),
+        ]
+    )
+    assert extras == {"status": "success"}
+
+
+def test_links_are_capped_and_labels_clipped_to_the_notifiers_limits() -> None:
+    many = [_done(f"s{i}", "L" * 300, f"https://e.test/{i}") for i in range(15)]
+    links = notification_extras(many)["links"]
+    assert len(links) == 10 and all(len(link["label"]) == 100 for link in links)
+
+
+async def test_extra_params_reach_the_tool_but_not_the_recorded_step() -> None:
+    rig = Rig()
+    outcome = await run_step(step("make"), 1, rig.ctx, {"title": "from the executor"})
+    assert rig.adapter.calls == [{"title": "from the executor", "folder_id": None}]
+    assert outcome.record.step.params == {}  # the plan's own step is untouched

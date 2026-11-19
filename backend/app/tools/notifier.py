@@ -74,6 +74,10 @@ class WebhookNotifier(ToolAdapter):
             params_model=NotificationMessage,
             reversible=False,
             repeat_safe=True,  # a repeated send is at worst a duplicate message
+            # The planner cannot know what will exist when the message goes out, so the
+            # executor supplies these from the run's real results: links to the items that
+            # were created (an LLM would invent URLs) and the status.
+            planner_hidden_params=frozenset({"status", "facts", "links"}),
         )
     }
 
