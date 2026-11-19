@@ -1,3 +1,27 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-ink-950 font-sans text-slate-100 antialiased;
+    /* Two soft glows, a violet one at the top and a warm one at the bottom, like the reference. */
+    background-image:
+      radial-gradient(60% 45% at 50% -8%, rgba(139, 92, 246, 0.2), transparent 70%),
+      radial-gradient(55% 35% at 50% 112%, rgba(249, 115, 22, 0.1), transparent 70%);
+    background-repeat: no-repeat;
+  }
+
+  /* A clear focus ring for keyboard users, in the accent colour. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-violet-400/70 ring-offset-2 ring-offset-ink-950;
+  }
+
+  ::placeholder {
+    @apply text-slate-500;
+  }
+}

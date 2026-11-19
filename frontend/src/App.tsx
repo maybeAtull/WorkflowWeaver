@@ -1,44 +1,62 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { getHealth } from "./api/client";
+import BackendStatus from "./components/BackendStatus";
+import { LogoIcon } from "./components/icons";
+import { panel, secondaryButton } from "./components/ui";
+import StartScreen from "./start/StartScreen";
 
-type BackendStatus = "checking" | "connected" | "unreachable";
-
-const STATUS_STYLES: Record<BackendStatus, { label: string; dot: string }> = {
-  checking: { label: "Checking backend…", dot: "bg-amber-400" },
-  connected: { label: "Backend connected", dot: "bg-emerald-500" },
-  unreachable: { label: "Backend unreachable", dot: "bg-red-500" },
-};
+type View = { kind: "start" } | { kind: "run"; runId: string };
 
 export default function App() {
-  const [status, setStatus] = useState<BackendStatus>("checking");
-
-  useEffect(() => {
-    // Abort the request if the component unmounts so we never set state afterwards.
-    const controller = new AbortController();
-    getHealth(controller.signal)
-      .then(() => setStatus("connected"))
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setStatus("unreachable");
-      });
-    return () => controller.abort();
-  }, []);
-
-  const { label, dot } = STATUS_STYLES[status];
+  const [view, setView] = useState<View>({ kind: "start" });
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-3xl px-6 py-16">
-        <h1 className="text-3xl font-bold tracking-tight">WorkflowWeaver</h1>
-        <p className="mt-2 text-slate-400">
-          Describe a business process in plain English and let the agent run it across your tools.
-        </p>
-        <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900 px-4 py-2 text-sm">
-          <span className={`h-2.5 w-2.5 rounded-full ${dot}`} aria-hidden="true" />
-          <span role="status">{label}</span>
+    <div className="min-h-screen">
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-xl text-ink-950">
+            <LogoIcon />
+          </span>
+          <span className="text-lg font-medium tracking-tight">WorkflowWeaver</span>
         </div>
-      </div>
-    </main>
+        <BackendStatus />
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 pb-24">
+        <section className="mx-auto max-w-3xl py-12 text-center sm:py-16">
+          <p className="mx-auto mb-6 inline-flex rounded-full border border-violet-400/30 bg-violet-500/10 px-4 py-1.5 text-xs">
+            <span className="bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
+              Notion · Google Drive · Slack or Teams
+            </span>
+          </p>
+          <h1 className="text-balance text-4xl font-light tracking-tight sm:text-6xl">
+            Turn a request into finished work
+          </h1>
+          <p className="mt-3 text-2xl font-light tracking-tight text-slate-500 sm:text-3xl">
+            Describe it in plain English.
+          </p>
+          <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-slate-400">
+            The agent plans the steps, does the work across your tools, checks it, and tells your team.
+            If something goes wrong, it undoes what it created.
+          </p>
+        </section>
+
+        {view.kind === "start" ? (
+          <StartScreen onStarted={(runId) => setView({ kind: "run", runId })} />
+        ) : (
+          // Placeholder: the live timeline replaces this in the next task.
+          <div className={`${panel} mx-auto flex max-w-xl flex-col items-start gap-4 p-8`}>
+            <p className="text-lg font-medium">Your workflow has started</p>
+            <p className="text-sm text-slate-400">
+              Run <span className="font-mono text-slate-200">{view.runId}</span> is on its way. The live progress
+              view arrives in the next step of the build.
+            </p>
+            <button type="button" className={secondaryButton} onClick={() => setView({ kind: "start" })}>
+              Start another
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
