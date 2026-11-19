@@ -31,6 +31,19 @@ class RunRecord(BaseModel):
     trace_url: str | None = None
 
 
+class RunSummary(BaseModel):
+    """One row of the history list: enough to recognise a run, without its full report."""
+
+    run_id: str
+    request: str
+    status: str
+    created_at: str
+    finished_at: str | None = None
+    headline: str | None = None
+    title: str | None = None
+    duration_seconds: float | None = None
+
+
 def _record(row: sqlite3.Row) -> RunRecord:
     report = row["report_json"]
     return RunRecord(
@@ -87,6 +100,10 @@ class RunStore:
     async def list_runs(self, limit: int = 50) -> list[RunRecord]:
         """Newest first."""
         return await asyncio.to_thread(self._list_runs, limit)
+
+    async def list_summaries(self, limit: int = 20) -> list[RunSummary]:
+        """Newest first, with just a few report fields (the full reports are not loaded)."""
+        return await asyncio.to_thread(self._list_summaries, limit)
 
     async def get_events(self, run_id: str, after_seq: int = 0) -> list[RunEvent]:
         """Events with a sequence number above `after_seq`, in order (for replay)."""
@@ -148,6 +165,18 @@ class RunStore:
                 "SELECT * FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)
             ).fetchall()
         return [_record(row) for row in rows]
+
+    def _list_summaries(self, limit: int) -> list[RunSummary]:
+        with closing(connect(self._path)) as db:
+            rows = db.execute(
+                "SELECT run_id, request, status, created_at, finished_at, "
+                "json_extract(report_json, '$.headline') AS headline, "
+                "json_extract(report_json, '$.title') AS title, "
+                "json_extract(report_json, '$.duration_seconds') AS duration_seconds "
+                "FROM runs ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [RunSummary(**dict(row)) for row in rows]
 
     def _get_events(self, run_id: str, after_seq: int) -> list[RunEvent]:
         with closing(connect(self._path)) as db:

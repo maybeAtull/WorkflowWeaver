@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent.runtime import agent_runtime
+from app.api import history as history_api
 from app.api import runs as runs_api
 from app.api.deps import AppState
 from app.api.run_manager import RunManager, RuntimeFactory
@@ -66,6 +67,7 @@ def create_app(
     )
 
     app.include_router(runs_api.router)
+    app.include_router(history_api.router)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
