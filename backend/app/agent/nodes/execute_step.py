@@ -13,9 +13,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.agent.deps import AgentDeps
 from app.agent.failure_injection import Injection
 from app.agent.retry import MAX_RETRIES, backoff_delay
-from app.agent.state import CompletedAction, PlanStep, StepRecord
+from app.agent.routing import decide_after_step
+from app.agent.state import CompletedAction, PlanStep, StepRecord, WorkflowState
 from app.events import EventBus
 from app.tools.base import ActionSpec, ToolError, TransientToolError, is_safe_to_retry
 from app.tools.registry import ToolRegistry
@@ -42,6 +44,64 @@ class StepOutcome(BaseModel):
     # Set on success. The caller must store it in state before running the next step.
     completed: CompletedAction | None = None
     retries_used: int = 0
+
+
+def context_for(deps: AgentDeps, state: WorkflowState) -> StepContext:
+    """The per-run context a step or a rollback needs, built from the deps and the state."""
+    return StepContext(
+        registry=deps.registry,
+        bus=deps.bus,
+        run_id=state["run_id"],
+        inputs=state["inputs"],
+        injection=deps.injection,
+        sleep=deps.sleep,
+        backoff=deps.backoff,
+    )
+
+
+def make_execute_node(deps: AgentDeps) -> Any:
+    """The graph node: runs the step at `current_idx`, one step per visit (so each step is
+    its own traceable visit). Returns only NEW completed actions (the state appends them),
+    and the undo handle lands in state in the same update, before the next step can run.
+    """
+
+    async def execute_step(state: WorkflowState) -> dict[str, Any]:
+        idx = state["current_idx"]
+        plan = state["plan"]
+        step = plan[idx]
+        outcome = await run_step(step, idx + 1, context_for(deps, state))
+
+        records = list(state["step_records"])
+        records[idx] = outcome.record
+        update: dict[str, Any] = {
+            "step_records": records,
+            "retries": state["retries"] + outcome.retries_used,
+        }
+        if outcome.ok:
+            assert outcome.completed is not None
+            update["completed"] = [outcome.completed]
+            update["current_idx"] = idx + 1
+        else:
+            update["error"] = outcome.record.error
+            # Steps after the failure never run; say so instead of leaving them "pending".
+            for later in range(idx + 1, len(records)):
+                records[later] = records[later].model_copy(update={"status": "skipped"})
+        update["status"] = decide_after_step(
+            ok=outcome.ok,
+            is_last=idx + 1 == len(plan),
+            irreversible=_is_irreversible(deps, step),
+            did_work=bool(state["completed"]),
+        )
+        return update
+
+    return execute_step
+
+
+def _is_irreversible(deps: AgentDeps, step: PlanStep) -> bool:
+    try:
+        return deps.registry.must_be_last(step.tool, step.action)
+    except ToolError:  # unknown tool or action: not the notification
+        return False
 
 
 def merge_hidden_params(

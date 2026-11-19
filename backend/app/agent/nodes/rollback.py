@@ -7,12 +7,15 @@ Choosing the run's final status is left to the routing (Task 2.4).
 """
 
 import logging
+from typing import Any
 
 from pydantic import BaseModel
 
-from app.agent.nodes.execute_step import StepContext
+from app.agent.deps import AgentDeps
+from app.agent.nodes.execute_step import StepContext, context_for
 from app.agent.retry import MAX_RETRIES
-from app.agent.state import CompletedAction, RollbackRecord
+from app.agent.routing import final_status_after_rollback
+from app.agent.state import CompletedAction, RollbackRecord, WorkflowState
 from app.tools.base import ToolError, TransientToolError
 
 logger = logging.getLogger(__name__)
@@ -25,6 +28,19 @@ class RollbackResult(BaseModel):
     def all_undone(self) -> bool:
         """True when nothing is left behind (skipped irreversible actions do not count)."""
         return all(record.status != "failed" for record in self.records)
+
+
+def make_rollback_node(deps: AgentDeps) -> Any:
+    """The graph node: undo everything done so far and set the final status."""
+
+    async def roll_back(state: WorkflowState) -> dict[str, Any]:
+        result = await run_rollback(state["completed"], context_for(deps, state))
+        return {
+            "rollbacks": result.records,  # appended to state by its reducer
+            "status": final_status_after_rollback(state["completed"], result.records),
+        }
+
+    return roll_back
 
 
 async def run_rollback(
