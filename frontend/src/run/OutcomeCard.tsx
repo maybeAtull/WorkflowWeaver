@@ -46,7 +46,7 @@ export default function OutcomeCard({ view, onStartAnother }: Props) {
                     href={item.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 transition hover:bg-white/10"
+                    className="inline-flex max-w-full flex-wrap items-center gap-x-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 transition hover:bg-white/10 sm:rounded-full"
                   >
                     <span className="text-slate-400">{toolLabel(item.tool)}</span>
                     {item.label}

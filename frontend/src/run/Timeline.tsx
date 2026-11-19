@@ -9,7 +9,7 @@ function StepIcon({ step }: { step: StepView }) {
   if (step.undo === "failed") return <AlertIcon className={`${base} text-amber-300`} />;
   switch (step.status) {
     case "queued":
-      return <CircleIcon className={`${base} text-slate-600`} />;
+      return <CircleIcon className={`${base} text-slate-500`} />;
     case "running":
       return <SpinnerIcon className={`${base} text-violet-300 motion-safe:animate-spin`} />;
     case "retrying":
@@ -26,7 +26,7 @@ function statusColour(step: StepView): string {
   if (step.undo === "undone") return "text-slate-400";
   switch (step.status) {
     case "queued":
-      return "text-slate-500";
+      return "text-slate-400";
     case "running":
       return "text-violet-300";
     case "retrying":

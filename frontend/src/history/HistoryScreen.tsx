@@ -34,16 +34,16 @@ function Row({ run }: { run: RunListItem }) {
             <span className="truncate text-[15px] text-slate-100">{title}</span>
           </div>
           {detail && <p className="mt-1.5 text-sm text-slate-400">{detail}</p>}
-          {run.title && <p className="mt-1 truncate text-xs text-slate-500">{run.request_preview}</p>}
+          {run.title && <p className="mt-1 truncate text-xs text-slate-400">{run.request_preview}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-4 text-sm text-slate-400">
           <div className="text-right">
             <p title={exactTime(run.created_at)}>{relativeTime(run.created_at)}</p>
             {run.duration_seconds !== null && (
-              <p className="text-xs text-slate-500">took {formatElapsed(run.duration_seconds)}</p>
+              <p className="text-xs text-slate-400">took {formatElapsed(run.duration_seconds)}</p>
             )}
           </div>
-          <ArrowRightIcon className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:text-slate-200" />
+          <ArrowRightIcon className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-slate-200" />
         </div>
       </a>
     </li>
@@ -77,8 +77,10 @@ export default function HistoryScreen() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 pt-4">
       <div>
-        <h1 className="text-2xl font-light tracking-tight sm:text-3xl">Past workflows</h1>
-        <p className="mt-1 text-sm text-slate-500">The latest {HISTORY_LIMIT}, newest first.</p>
+        <h1 tabIndex={-1} className="text-2xl font-light tracking-tight outline-none sm:text-3xl">
+          Past workflows
+        </h1>
+        <p className="mt-1 text-sm text-slate-400">The latest {HISTORY_LIMIT}, newest first.</p>
       </div>
 
       {load.status === "loading" && (

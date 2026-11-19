@@ -26,7 +26,7 @@ export default function DemoOptions({ mode, step, disabled, onModeChange, onStep
         )}
       </summary>
       <fieldset className="mt-4 space-y-3" disabled={disabled}>
-        <legend className="mb-2 text-xs text-slate-500">
+        <legend className="mb-2 text-xs text-slate-400">
           For demonstrations only: break a step on purpose to see how the agent recovers.
         </legend>
         {MODES.map((value) => (

@@ -32,7 +32,7 @@ export default function FreeTextForm({ text, error, disabled, onChange, onBlur }
       />
       <div className="mt-1.5 flex items-start justify-between gap-4 text-xs">
         <div>
-          <p id={`${FREE_TEXT_ID}-help`} className="text-slate-500">
+          <p id={`${FREE_TEXT_ID}-help`} className="text-slate-400">
             Say what to create and where, and paste any notes the agent should use.
           </p>
           {error && (
@@ -42,7 +42,7 @@ export default function FreeTextForm({ text, error, disabled, onChange, onBlur }
           )}
         </div>
         {counter.visible && (
-          <span className={counter.over ? "text-rose-300" : "text-slate-500"}>{counter.text}</span>
+          <span className={counter.over ? "text-rose-300" : "text-slate-400"}>{counter.text}</span>
         )}
       </div>
     </div>

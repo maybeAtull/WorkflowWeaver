@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { panel } from "../components/ui";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import ReportPanel from "../report/ReportPanel";
 import ConnectionBanner from "./ConnectionBanner";
 import OutcomeCard from "./OutcomeCard";
@@ -34,13 +35,16 @@ function LiveRun({ runId, onStartAnother, onTryAgain }: Props & { onTryAgain: ()
     : lost
       ? "We can't show this run right now"
       : "Your workflow is running";
+  useDocumentTitle(heading); // the tab says what the page says
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-light tracking-tight sm:text-3xl">{heading}</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 tabIndex={-1} className="text-2xl font-light tracking-tight outline-none sm:text-3xl">
+            {heading}
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">
             Run <span className="font-mono text-slate-400">{runId}</span>
           </p>
         </div>

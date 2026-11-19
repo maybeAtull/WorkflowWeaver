@@ -28,9 +28,12 @@ export default function BackendStatus() {
 
   const { label, dot } = STYLES[status];
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3.5 py-1.5 text-xs text-slate-300">
+    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 sm:px-3.5 sm:py-1.5">
       <span className={`h-2 w-2 rounded-full ${dot}`} aria-hidden="true" />
-      <span role="status">{label}</span>
+      {/* On a phone only the dot shows; the words stay for screen readers. */}
+      <span role="status" className="sr-only sm:not-sr-only">
+        {label}
+      </span>
     </div>
   );
 }

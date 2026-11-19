@@ -96,3 +96,52 @@ describe("which screen the address selects", () => {
     expect(await screen.findByRole("heading", { name: /Turn a request/ })).toBeInTheDocument();
   });
 });
+
+describe("keyboard and screen-reader support", () => {
+  it("does not move focus on first load", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    expect(document.body).toHaveFocus();
+  });
+
+  it("moves focus to the new screen's heading when the screen changes", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    act(() => {
+      window.history.pushState(null, "", "/#history");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(await screen.findByRole("heading", { name: "Past workflows" })).toHaveFocus();
+  });
+
+  it("has a skip link that jumps to the main content without touching the address", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    fireEvent.click(screen.getByRole("link", { name: "Skip to main content" }));
+    expect(screen.getByRole("main")).toHaveFocus();
+    expect(window.location.hash).toBe(""); // our own address handling must not see it
+  });
+
+  it("keeps the main landmark and the navigation landmark", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    expect(screen.getByRole("main")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+  });
+
+  it("titles the tab after the screen", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: /Turn a request/ });
+    expect(document.title).toBe("WorkflowWeaver");
+    act(() => {
+      window.history.pushState(null, "", "/#history");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(document.title).toBe("Past workflows · WorkflowWeaver");
+    act(() => {
+      window.history.pushState(null, "", "/#run=abc123");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(document.title).toBe("Your workflow is running · WorkflowWeaver");
+  });
+});

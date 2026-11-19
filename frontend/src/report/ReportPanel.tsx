@@ -9,54 +9,73 @@ import { useRunRecord } from "./useRunRecord";
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-      <dt className="text-xs text-slate-500">{label}</dt>
+      <dt className="text-xs text-slate-400">{label}</dt>
       <dd className="mt-1 text-lg text-slate-100">{value}</dd>
     </div>
   );
+}
+
+// On a phone each step is a small card with labelled lines; from the `sm` breakpoint up the same
+// markup is laid out as table columns. ARIA table roles keep it a real table for screen readers, and
+// the per-cell labels are hidden on wide screens, where the column headers say the same thing.
+const COLUMNS = "sm:grid-cols-[minmax(0,2.4fr)_minmax(0,1fr)_minmax(0,1fr)_3rem_minmax(0,2fr)] sm:gap-x-4";
+
+function CellLabel({ children }: { children: string }) {
+  return <span className="mr-1.5 text-xs text-slate-400 sm:hidden">{children}</span>;
 }
 
 function StepsTable({ report }: { report: RunReport }) {
   const steps = report.steps ?? [];
   if (steps.length === 0) return null;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[34rem] text-left text-sm">
-        <caption className="sr-only">What each step did</caption>
-        <thead className="text-xs text-slate-500">
-          <tr>
-            <th scope="col" className="pb-2 pr-4 font-normal">Step</th>
-            <th scope="col" className="pb-2 pr-4 font-normal">Tool</th>
-            <th scope="col" className="pb-2 pr-4 font-normal">Status</th>
-            <th scope="col" className="pb-2 pr-4 font-normal">Tries</th>
-            <th scope="col" className="pb-2 font-normal">Result</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-white/5 text-slate-300">
-          {steps.map((step) => (
-            <tr key={step.id} className="align-top">
-              <td className="py-2.5 pr-4 text-slate-100">{step.description}</td>
-              <td className="py-2.5 pr-4">{toolLabel(step.tool)}</td>
-              <td className="py-2.5 pr-4">{reportStepStatus(step.status)}</td>
-              <td className="py-2.5 pr-4">{step.attempts}</td>
-              <td className="py-2.5 text-slate-400">
-                {step.status === "succeeded" && isSafeUrl(step.url) ? (
-                  <a
-                    href={step.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-violet-200 underline-offset-4 hover:underline"
-                  >
-                    {stepResult(step)}
-                    <ExternalIcon className="h-3.5 w-3.5" />
-                  </a>
-                ) : (
-                  stepResult(step)
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div role="table" aria-label="What each step did" className="text-sm">
+      <div role="row" className={`hidden pb-2 text-xs text-slate-400 sm:grid ${COLUMNS}`}>
+        <span role="columnheader">Step</span>
+        <span role="columnheader">Tool</span>
+        <span role="columnheader">Status</span>
+        <span role="columnheader">Tries</span>
+        <span role="columnheader">Result</span>
+      </div>
+      <div role="rowgroup" className="space-y-3 sm:space-y-0 sm:divide-y sm:divide-white/5">
+        {steps.map((step) => (
+          <div
+            role="row"
+            key={step.id}
+            className={`grid gap-1 rounded-2xl border border-white/10 bg-white/[0.02] p-4 text-slate-300 sm:items-start sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:py-2.5 ${COLUMNS}`}
+          >
+            <div role="cell" className="text-slate-100">
+              {step.description}
+            </div>
+            <div role="cell">
+              <CellLabel>Tool:</CellLabel>
+              {toolLabel(step.tool)}
+            </div>
+            <div role="cell">
+              <CellLabel>Status:</CellLabel>
+              {reportStepStatus(step.status)}
+            </div>
+            <div role="cell">
+              <CellLabel>Tries:</CellLabel>
+              {step.attempts}
+            </div>
+            <div role="cell" className="min-w-0 break-words text-slate-400">
+              {step.status === "succeeded" && isSafeUrl(step.url) ? (
+                <a
+                  href={step.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-violet-200 underline-offset-4 hover:underline"
+                >
+                  {stepResult(step)}
+                  <ExternalIcon className="h-3.5 w-3.5 shrink-0" />
+                </a>
+              ) : (
+                stepResult(step)
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

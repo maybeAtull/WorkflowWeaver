@@ -204,3 +204,20 @@ describe("other reports", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 });
+
+describe("the steps on a small screen", () => {
+  it("labels every value so a stacked card still reads on its own, and loses no step", async () => {
+    api.getRun.mockResolvedValue(record());
+    render(<ReportPanel runId="r1" finished />);
+    await advance(0);
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    for (const row of rows.slice(1)) {
+      expect(row).toHaveTextContent("Tool:");
+      expect(row).toHaveTextContent("Status:");
+      expect(row).toHaveTextContent("Tries:");
+    }
+    expect(rows.slice(1)).toHaveLength(REPORT.steps?.length ?? 0);
+    // The column headers belong to the wide layout only.
+    expect(within(rows[0]).getAllByRole("columnheader")).toHaveLength(5);
+  });
+});

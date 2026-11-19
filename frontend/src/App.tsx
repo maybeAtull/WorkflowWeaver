@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import BackendStatus from "./components/BackendStatus";
 import { HistoryIcon, LogoIcon } from "./components/icons";
+import { APP_NAME, useDocumentTitle } from "./hooks/useDocumentTitle";
+import { useFocusOnChange } from "./hooks/useFocusOnChange";
 import HistoryScreen from "./history/HistoryScreen";
 import RunScreen from "./run/RunScreen";
 import { HISTORY_HASH, type Route, parseRoute, runHash } from "./run/route";
@@ -38,9 +40,26 @@ export default function App() {
   };
   const start: Route = { kind: "start" };
 
+  // Where the user is, for the tab title (a run sets its own) and for moving focus on a screen change.
+  useDocumentTitle(route.kind === "history" ? "Past workflows" : route.kind === "start" ? APP_NAME : null);
+  const main = useRef<HTMLElement>(null);
+  useFocusOnChange(route.kind === "run" ? "run:" + route.runId : route.kind, main);
+
   return (
     <div className="min-h-screen">
-      <header className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-6">
+      {/* First thing a keyboard user reaches: jump over the header. (A script moves focus rather than
+          following the link, because #main-content would be read as an address by our own routing.) */}
+      <a
+        href="#main-content"
+        onClick={(event) => {
+          event.preventDefault();
+          main.current?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-ink-950"
+      >
+        Skip to main content
+      </a>
+      <header className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-6 sm:px-6">
         <button
           type="button"
           onClick={() => go(start)}
@@ -50,9 +69,9 @@ export default function App() {
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-xl text-ink-950">
             <LogoIcon />
           </span>
-          <span className="text-lg font-medium tracking-tight">WorkflowWeaver</span>
+          <span className="hidden text-lg font-medium tracking-tight min-[400px]:inline">WorkflowWeaver</span>
         </button>
-        <nav aria-label="Main" className="flex items-center gap-3">
+        <nav aria-label="Main" className="flex items-center gap-2 sm:gap-3">
           <a
             href={HISTORY_HASH}
             aria-current={route.kind === "history" ? "page" : undefined}
@@ -70,7 +89,12 @@ export default function App() {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 pb-24">
+      <main
+        id="main-content"
+        ref={main}
+        tabIndex={-1}
+        className="mx-auto max-w-6xl px-4 pb-24 outline-none sm:px-6"
+      >
         {route.kind === "run" ? (
           <RunScreen runId={route.runId} onStartAnother={() => go(start)} />
         ) : route.kind === "history" ? (
@@ -83,7 +107,10 @@ export default function App() {
                   Notion · Google Drive · Slack or Teams
                 </span>
               </p>
-              <h1 className="text-balance text-4xl font-light tracking-tight sm:text-6xl">
+              <h1
+                tabIndex={-1}
+                className="text-balance text-4xl font-light tracking-tight outline-none sm:text-6xl"
+              >
                 Turn a request into finished work
               </h1>
               <p className="mt-3 text-2xl font-light tracking-tight text-slate-500 sm:text-3xl">

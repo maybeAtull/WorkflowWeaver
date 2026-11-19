@@ -48,7 +48,7 @@ function Field({
     <div>
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-200">
         {field.label}
-        {!field.required && <span className="ml-1.5 font-normal text-slate-500">(optional)</span>}
+        {!field.required && <span className="ml-1.5 font-normal text-slate-400">(optional)</span>}
       </label>
       {field.kind === "longtext" ? (
         <textarea {...common} rows={7} onChange={(e) => onChange(e.target.value)} />
@@ -67,7 +67,7 @@ function Field({
       <div className="mt-1.5 flex items-start justify-between gap-4 text-xs">
         <div>
           {field.help && (
-            <p id={helpId} className="text-slate-500">
+            <p id={helpId} className="text-slate-400">
               {field.help}
             </p>
           )}
@@ -78,7 +78,7 @@ function Field({
           )}
         </div>
         {counter.visible && (
-          <span className={counter.over ? "text-rose-300" : "text-slate-500"}>{counter.text}</span>
+          <span className={counter.over ? "text-rose-300" : "text-slate-400"}>{counter.text}</span>
         )}
       </div>
     </div>
