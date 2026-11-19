@@ -4,8 +4,15 @@ Talks to Drive only through the MCP session manager, using three whitelisted too
 formats below were read from the pinned server's source (google-drive-mcp 2.13.0), not guessed:
   createTextFile -> "Created file: <name>\\nID: <id>"
   listFolder     -> "Contents of folder:\\n\\n<icon> <name> (ID: <id>)" per item
-Undo of a created file is "move to trash" (restorable). The server also refuses to create a
-file whose name already exists in the folder, so a retried create cannot make a duplicate.
+Undo of a created file is "move to trash" (restorable).
+
+The server refuses to create a file whose name already exists in the folder. That protects a
+retried create from making a duplicate, but it also meant a second run with the same title failed.
+So the executor gives every run a short token (`unique_token`) and the file is named
+"<title> (<token>).md": two runs can never collide, and every attempt of ONE step asks for the
+same name. If the server says "already exists" for such a name, the file can only be ours (the
+token is the run's), i.e. an earlier attempt created it but its reply was lost, so we adopt it
+instead of failing. That keeps a create safe to repeat.
 """
 
 import re
@@ -30,6 +37,8 @@ DELETE_ITEM_TOOL = "deleteItem"  # moves to trash (restorable): our undo
 
 ALLOWED_EXTENSIONS = (".txt", ".md")  # the server rejects any other text-file name
 MAX_CONTENT_CHARS = 50_000
+MAX_NAME_CHARS = 200
+_ALREADY_EXISTS = "already exists"  # how the server words a duplicate-name refusal
 
 _CREATED_ID = re.compile(r"^ID:\s*(\S+)\s*$", re.MULTILINE)
 # "<icon> <name> (ID: <id>)": the icon is a folder or document emoji, so match it loosely.
@@ -49,6 +58,9 @@ class CreateTextFileParams(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=MAX_CONTENT_CHARS)
     folder_id: str | None = None  # defaults to the sandbox folder from settings
+    # Set by the executor from the run id, never by the planner. When present it is added to the
+    # file name so the name is unique to this run (see the module docstring).
+    unique_token: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,16}$")
 
     @field_validator("name")
     @classmethod
@@ -73,6 +85,18 @@ def parse_listing(text: str) -> tuple[list[dict[str, Any]], bool]:
     return items, "More items available" in text
 
 
+def unique_file_name(name: str, token: str) -> str:
+    """'Notes.md' + 'a1b2c3d4' -> 'Notes (a1b2c3d4).md'. The extension keeps its case, and the
+    title is trimmed (never the token or the extension) so the whole name stays within the limit.
+    """
+    extension = next(ext for ext in ALLOWED_EXTENSIONS if name.lower().endswith(ext))
+    stem = name[: -len(extension)]
+    extension = name[len(stem) :]  # as written, e.g. ".MD"
+    suffix = f" ({token})"
+    room = MAX_NAME_CHARS - len(suffix) - len(extension)
+    return f"{stem[:room].strip() or 'file'}{suffix}{extension}"
+
+
 def drive_file_url(file_id: str) -> str:
     return f"https://drive.google.com/file/d/{file_id}/view"
 
@@ -88,10 +112,12 @@ class DriveAdapter(ToolAdapter):
             ),
             params_model=CreateTextFileParams,
             reversible=True,
-            # The server refuses a second file with the same name, so repeating a create
-            # cannot duplicate; at worst it fails with "already exists".
+            # Repeating a create cannot duplicate: the server refuses a second file with the
+            # same name, and our unique names make that refusal mean "an earlier attempt of
+            # this step made it", which is then adopted.
             repeat_safe=True,
-            planner_hidden_params=frozenset({"folder_id"}),  # comes from settings
+            # folder_id comes from settings; unique_token from the run id (the executor).
+            planner_hidden_params=frozenset({"folder_id", "unique_token"}),
         ),
         "list_folder": ActionSpec(
             name="list_folder",
@@ -119,18 +145,47 @@ class DriveAdapter(ToolAdapter):
 
     async def _create_text_file(self, params: CreateTextFileParams) -> ToolResult:
         folder = params.folder_id or self._default_folder
-        text = await self._mcp.call_tool(
-            DRIVE_SERVER,
-            CREATE_TEXT_FILE_TOOL,
-            {"name": params.name, "content": params.content, "parentFolderId": folder},
+        name = (
+            unique_file_name(params.name, params.unique_token)
+            if params.unique_token
+            else params.name
         )
-        file_id = await self._created_file_id(text, params.name, folder)
+        try:
+            text = await self._mcp.call_tool(
+                DRIVE_SERVER,
+                CREATE_TEXT_FILE_TOOL,
+                {"name": name, "content": params.content, "parentFolderId": folder},
+            )
+        except FatalToolError as error:
+            # With a unique name, "already exists" can only mean an earlier attempt of this very
+            # step created the file and its reply never reached us. Take it as ours.
+            if params.unique_token and _ALREADY_EXISTS in str(error).lower():
+                existing = await self._find_file(name, folder)
+                if existing is not None:
+                    return self._created(name, existing, folder, adopted=True)
+            raise
+        file_id = await self._created_file_id(text, name, folder)
+        return self._created(name, file_id, folder)
+
+    @staticmethod
+    def _created(
+        name: str, file_id: str, folder: str, adopted: bool = False
+    ) -> ToolResult:
+        output: dict[str, Any] = {"file_id": file_id, "name": name}
+        if adopted:
+            output["adopted"] = (
+                True  # found, not newly made: created by an earlier attempt
+            )
         return ToolResult(
-            summary=f"Created Drive file '{params.name}'",
-            output={"file_id": file_id, "name": params.name},
+            summary=(
+                f"Found Drive file '{name}' from an earlier attempt"
+                if adopted
+                else f"Created Drive file '{name}'"
+            ),
+            output=output,
             url=drive_file_url(file_id),
             undo_handle=UndoHandle(
-                tool=self.name,
+                tool="drive",
                 action="create_text_file",
                 # The folder is kept so verify looks where the file was really created
                 # (a step can override the default folder).
@@ -138,11 +193,9 @@ class DriveAdapter(ToolAdapter):
             ),
         )
 
-    async def _created_file_id(self, reply: str, name: str, folder: str) -> str:
-        match = _CREATED_ID.search(reply)
-        if match and match.group(1).lower() != "unknown":
-            return match.group(1)
-        # The server can answer "ID: unknown"; the file exists, so look it up by name.
+    async def _find_file(self, name: str, folder: str) -> str | None:
+        """The id of the file called exactly `name` in the folder, or None (also when the
+        listing is cut off, because then its absence proves nothing)."""
         listing = await self._mcp.call_tool(
             DRIVE_SERVER, LIST_FOLDER_TOOL, {"folderId": folder}
         )
@@ -150,6 +203,16 @@ class DriveAdapter(ToolAdapter):
         for item in items:
             if item["name"] == name and not item["is_folder"]:
                 return str(item["id"])
+        return None
+
+    async def _created_file_id(self, reply: str, name: str, folder: str) -> str:
+        match = _CREATED_ID.search(reply)
+        if match and match.group(1).lower() != "unknown":
+            return match.group(1)
+        # The server can answer "ID: unknown"; the file exists, so look it up by name.
+        found = await self._find_file(name, folder)
+        if found is not None:
+            return found
         raise FatalToolError(
             f"The file '{name}' was created but its id could not be determined; "
             "delete it by hand in your Drive folder."

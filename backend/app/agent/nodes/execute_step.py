@@ -162,6 +162,26 @@ def merge_hidden_params(
     return merged
 
 
+TOKEN_CHARS = 8  # random enough that two runs never share one (run ids are random hex)
+
+
+def run_token(run_id: str) -> str:
+    """A short letters-and-digits token for this run, the same every time it is asked for."""
+    return "".join(ch for ch in run_id if ch.isalnum())[:TOKEN_CHARS]
+
+
+def run_params(spec: ActionSpec, run_id: str) -> dict[str, Any]:
+    """Values taken from the run itself, for actions that declare them as hidden parameters.
+
+    Today only `unique_token` (Drive file names). It overrides anything the plan or the inputs
+    carried, so a name's uniqueness cannot be switched off from outside.
+    """
+    token = run_token(run_id)
+    if token and "unique_token" in spec.planner_hidden_params:
+        return {"unique_token": token}
+    return {}
+
+
 async def run_step(
     step: PlanStep,
     position: int,
@@ -186,6 +206,9 @@ async def run_step(
     try:
         spec = ctx.registry.spec(step.tool, step.action)
         params = merge_hidden_params(spec, step.params, ctx.inputs)
+        # Built once here, before the attempt loop, so every retry of this step sends the same
+        # values (the Drive file name relies on that).
+        params.update(run_params(spec, ctx.run_id))
         params.update(extra_params or {})
         return await _attempt_loop(step, position, ctx, spec, params, record)
     except ToolError as error:  # e.g. an unknown tool or action

@@ -8,7 +8,9 @@ from app.agent.nodes.execute_step import (
     StepContext,
     merge_hidden_params,
     notification_extras,
+    run_params,
     run_step,
+    run_token,
 )
 from app.agent.state import CompletedAction, PlanStep
 from app.events import EventBus
@@ -298,3 +300,109 @@ async def test_extra_params_reach_the_tool_but_not_the_recorded_step() -> None:
     outcome = await run_step(step("make"), 1, rig.ctx, {"title": "from the executor"})
     assert rig.adapter.calls == [{"title": "from the executor", "folder_id": None}]
     assert outcome.record.step.params == {}  # the plan's own step is untouched
+
+
+# ------------------------------------------------------------------ run-derived parameters
+
+
+class TokenParams(BaseModel):
+    title: str = "t"
+    unique_token: str | None = None
+
+
+class TokenAdapter(ToolAdapter):
+    """An action that declares `unique_token` hidden, like the Drive create does."""
+
+    name = "tok"
+    actions: ClassVar[dict[str, ActionSpec]] = {
+        "make": ActionSpec(
+            name="make",
+            description="d",
+            params_model=TokenParams,
+            reversible=True,
+            repeat_safe=True,
+            planner_hidden_params=frozenset({"unique_token"}),
+        ),
+    }
+
+    def __init__(self, *script: Any) -> None:
+        self.script = list(script)
+        self.calls: list[dict[str, Any]] = []
+
+    async def _run(self, action: str, params: BaseModel) -> ToolResult:
+        assert isinstance(params, TokenParams)
+        self.calls.append(params.model_dump())
+        outcome = self.script.pop(0) if self.script else None
+        if isinstance(outcome, Exception):
+            raise outcome
+        return ToolResult(
+            summary="made", undo_handle=UndoHandle(tool="tok", action="make", data={})
+        )
+
+
+def token_ctx(adapter: TokenAdapter, run_id: str, **inputs: Any) -> StepContext:
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    return StepContext(
+        registry=ToolRegistry([adapter]),
+        bus=EventBus(),
+        run_id=run_id,
+        inputs=inputs,
+        injection=None,
+        sleep=no_sleep,
+        backoff=float,
+    )
+
+
+def token_step(**params: Any) -> PlanStep:
+    return PlanStep(id="s1", tool="tok", action="make", params=params)
+
+
+def test_the_token_is_eight_letters_and_digits_taken_from_the_run_id() -> None:
+    assert run_token("a08a70c87e3c") == "a08a70c8"
+    assert run_token("ab-cd_ef gh12345") == "abcdefgh"
+    assert run_token("r") == "r"
+    assert run_token("---") == ""
+
+
+def test_only_actions_that_declare_the_token_get_one() -> None:
+    declares = TokenAdapter.actions["make"]
+    plain = FakeAdapter.actions["make"]
+    assert run_params(declares, "a08a70c87e3c") == {"unique_token": "a08a70c8"}
+    assert run_params(plain, "a08a70c87e3c") == {}
+    assert (
+        run_params(declares, "---") == {}
+    )  # no usable characters: no token, not a bad one
+
+
+async def test_the_step_receives_the_runs_token() -> None:
+    adapter = TokenAdapter()
+    outcome = await run_step(
+        token_step(title="x"), 1, token_ctx(adapter, "a08a70c87e3c")
+    )
+    assert outcome.ok
+    assert adapter.calls == [{"title": "x", "unique_token": "a08a70c8"}]
+
+
+async def test_every_retry_of_a_step_sends_the_same_token() -> None:
+    adapter = TokenAdapter(
+        TransientToolError("busy", outcome_unknown=True), TransientToolError("busy")
+    )
+    outcome = await run_step(token_step(), 1, token_ctx(adapter, "a08a70c87e3c"))
+    assert outcome.ok and outcome.record.attempts == 3
+    assert [c["unique_token"] for c in adapter.calls] == ["a08a70c8"] * 3
+
+
+async def test_two_runs_get_different_tokens() -> None:
+    first, second = TokenAdapter(), TokenAdapter()
+    await run_step(token_step(), 1, token_ctx(first, "aaaaaaaa1111"))
+    await run_step(token_step(), 1, token_ctx(second, "bbbbbbbb2222"))
+    assert first.calls[0]["unique_token"] != second.calls[0]["unique_token"]
+
+
+async def test_the_token_cannot_be_overridden_by_the_inputs_or_the_plan() -> None:
+    adapter = TokenAdapter()
+    ctx = token_ctx(adapter, "a08a70c87e3c", unique_token="from-inputs")
+    await run_step(token_step(unique_token="from-plan"), 1, ctx)
+    assert adapter.calls[0]["unique_token"] == "a08a70c8"

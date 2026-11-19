@@ -3,7 +3,13 @@ from typing import Any
 import pytest
 
 from app.tools.base import FatalToolError, TransientToolError, UndoHandle
-from app.tools.drive import MAX_CONTENT_CHARS, DriveAdapter, parse_listing
+from app.tools.drive import (
+    MAX_CONTENT_CHARS,
+    MAX_NAME_CHARS,
+    DriveAdapter,
+    parse_listing,
+    unique_file_name,
+)
 
 DEFAULT_FOLDER = "sandbox-folder-id"
 FOLDER_ICON = "\N{FILE FOLDER}"
@@ -199,7 +205,10 @@ def test_the_planner_sees_the_create_but_not_the_listing_or_the_folder_id() -> N
         DriveAdapter.actions["list_folder"],
     )
     assert create.planner_visible is True
-    assert create.planner_hidden_params == {"folder_id"}  # comes from settings
+    assert create.planner_hidden_params == {
+        "folder_id",  # comes from settings
+        "unique_token",  # comes from the run id
+    }
     assert listing_.planner_visible is False  # used by the verify step only
 
 
@@ -277,3 +286,140 @@ async def test_verify_without_a_file_id_is_fatal() -> None:
 async def test_verify_lets_a_transient_read_error_through() -> None:
     with pytest.raises(TransientToolError):
         await adapter(FakeMcp(TransientToolError("timed out"))).verify(file_handle())
+
+
+# ------------------------------------------------------------------ unique names per run
+
+TOKEN = "a1b2c3d4"
+REFUSAL = 'drive.createTextFile returned an error: Error: A file named "x" already exists in this location.'
+
+
+def test_a_name_gets_the_runs_token_before_its_extension() -> None:
+    assert unique_file_name("Project Falcon weekly sync.md", TOKEN) == (
+        f"Project Falcon weekly sync ({TOKEN}).md"
+    )
+    assert unique_file_name("notes.txt", TOKEN) == f"notes ({TOKEN}).txt"
+
+
+def test_the_extension_keeps_the_case_it_was_written_in() -> None:
+    assert unique_file_name("NOTES.MD", TOKEN) == f"NOTES ({TOKEN}).MD"
+
+
+def test_the_same_name_and_token_always_give_the_same_file_name() -> None:
+    assert unique_file_name("a.md", TOKEN) == unique_file_name("a.md", TOKEN)
+    assert unique_file_name("a.md", "11111111") != unique_file_name("a.md", "22222222")
+
+
+def test_a_long_title_is_trimmed_but_never_the_token_or_extension() -> None:
+    name = unique_file_name("x" * 200 + ".md", TOKEN)
+    assert len(name) == MAX_NAME_CHARS
+    assert name.endswith(f" ({TOKEN}).md")
+
+
+def test_a_name_that_is_only_an_extension_still_gets_a_usable_name() -> None:
+    assert unique_file_name(".md", TOKEN) == f"file ({TOKEN}).md"
+
+
+async def test_create_with_a_token_asks_the_server_for_the_unique_name() -> None:
+    mcp = FakeMcp(created(f"notes ({TOKEN}).md", "id-1"))
+    result = await adapter(mcp).execute(
+        "create_text_file", {"name": "notes.md", "unique_token": TOKEN}
+    )
+    assert mcp.calls[0][2]["name"] == f"notes ({TOKEN}).md"
+    assert result.output == {"file_id": "id-1", "name": f"notes ({TOKEN}).md"}
+    assert result.summary == f"Created Drive file 'notes ({TOKEN}).md'"
+
+
+async def test_the_id_fallback_looks_for_the_unique_name_not_the_original() -> None:
+    unique = f"notes ({TOKEN}).md"
+    mcp = FakeMcp(
+        "Created file\nID: unknown",
+        listing(
+            f"{FILE_ICON} notes.md (ID: old-one)", f"{FILE_ICON} {unique} (ID: mine)"
+        ),
+    )
+    result = await adapter(mcp).execute(
+        "create_text_file", {"name": "notes.md", "unique_token": TOKEN}
+    )
+    assert result.output["file_id"] == "mine"
+
+
+async def test_a_file_an_earlier_attempt_made_is_adopted_not_refused() -> None:
+    unique = f"notes ({TOKEN}).md"
+    mcp = FakeMcp(
+        FatalToolError(REFUSAL),
+        listing(f"{FILE_ICON} {unique} (ID: made-before)"),
+    )
+    result = await adapter(mcp).execute(
+        "create_text_file", {"name": "notes.md", "unique_token": TOKEN}
+    )
+    assert [call[1] for call in mcp.calls] == ["createTextFile", "listFolder"]
+    assert result.output == {"file_id": "made-before", "name": unique, "adopted": True}
+    assert result.summary == f"Found Drive file '{unique}' from an earlier attempt"
+    # It is ours, so a rollback must be able to move it to the trash.
+    assert result.undo_handle == UndoHandle(
+        tool="drive",
+        action="create_text_file",
+        data={"file_id": "made-before", "folder_id": DEFAULT_FOLDER},
+    )
+
+
+async def test_without_a_token_a_duplicate_is_still_refused_and_nothing_is_adopted() -> (
+    None
+):
+    mcp = FakeMcp(FatalToolError(REFUSAL))
+    with pytest.raises(FatalToolError, match="already exists"):
+        await adapter(mcp).execute("create_text_file", {"name": "notes.md"})
+    assert len(mcp.calls) == 1  # no folder listing: nothing to adopt
+
+
+@pytest.mark.parametrize(
+    "listing_text",
+    [
+        listing(f"{FILE_ICON} other.md (ID: x1)"),  # our name is not there
+        listing(
+            f"{FOLDER_ICON} notes ({TOKEN}).md (ID: a-folder)"
+        ),  # a folder is not a file
+        listing(
+            f"{FILE_ICON} other.md (ID: x1)", more=True
+        ),  # cut off: absence proves nothing
+    ],
+)
+async def test_an_unexplained_duplicate_refusal_is_still_an_error(
+    listing_text: str,
+) -> None:
+    mcp = FakeMcp(FatalToolError(REFUSAL), listing_text)
+    with pytest.raises(FatalToolError, match="already exists"):
+        await adapter(mcp).execute(
+            "create_text_file", {"name": "notes.md", "unique_token": TOKEN}
+        )
+
+
+async def test_other_fatal_errors_are_not_mistaken_for_a_duplicate() -> None:
+    mcp = FakeMcp(FatalToolError("No access to the folder"))
+    with pytest.raises(FatalToolError, match="No access"):
+        await adapter(mcp).execute(
+            "create_text_file", {"name": "notes.md", "unique_token": TOKEN}
+        )
+    assert len(mcp.calls) == 1
+
+
+@pytest.mark.parametrize("token", ["", "a b", "x" * 17, "a/b", "é"])
+async def test_a_malformed_token_is_rejected_before_reaching_drive(token: str) -> None:
+    mcp = FakeMcp()
+    with pytest.raises(FatalToolError, match="Invalid parameters"):
+        await adapter(mcp).execute(
+            "create_text_file", {"name": "notes.md", "unique_token": token}
+        )
+    assert mcp.calls == []
+
+
+def test_the_planner_can_never_see_or_set_the_token() -> None:
+    from app.tools.registry import ToolRegistry
+
+    registry = ToolRegistry([adapter(FakeMcp())])
+    assert "unique_token" not in registry.render_catalogue()
+    problems = registry.validate_step(
+        "drive", "create_text_file", {"name": "a.md", "unique_token": "abc"}
+    )
+    assert any("unknown parameter" in p for p in problems)
