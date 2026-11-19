@@ -123,6 +123,23 @@ async def test_a_restart_settles_runs_left_running(store: RunStore) -> None:
     assert await store.recover_interrupted() == 0  # nothing left to settle
 
 
+async def test_a_settled_run_gets_a_closing_event_after_its_last_one(
+    store: RunStore,
+) -> None:
+    await store.create_run("dead", "req")
+    await store.append_event(event("dead", 1, "run_started"))
+    await store.append_event(event("dead", 2, "step_started"))
+    await store.recover_interrupted()
+    events = await store.get_events("dead")
+    assert [(e.seq, e.type) for e in events] == [
+        (1, "run_started"),
+        (2, "step_started"),
+        (3, "run_completed"),
+    ]
+    assert events[-1].data["status"] == "failed"
+    assert events[-1].data["headline"] == INTERRUPTED_HEADLINE
+
+
 async def test_data_survives_a_new_store_on_the_same_file(store: RunStore) -> None:
     await store.create_run("r1", "req")
     await store.append_event(event("r1", 1))

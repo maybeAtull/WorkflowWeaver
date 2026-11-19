@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
+from app.api.run_manager import RunManager
 from app.config import Settings
 from app.events import EventBus
 from app.observability.tracing import Tracer
@@ -20,6 +21,7 @@ class AppState:
     bus: EventBus
     tracer: Tracer
     store: RunStore
+    runs: RunManager
 
 
 def get_state(request: Request) -> AppState:

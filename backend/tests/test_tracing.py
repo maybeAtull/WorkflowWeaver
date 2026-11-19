@@ -231,3 +231,17 @@ def test_shutdown_is_counted_ignored_by_the_noop_and_made_safe() -> None:
     assert memory.shutdowns == 1
     NoopTracer().shutdown()
     SafeTracer(ExplodingTracer()).shutdown()  # type: ignore[arg-type]
+
+
+def test_trace_url_is_none_for_the_noop_and_safe_when_the_backend_fails() -> None:
+    class Failing(ExplodingTracer):
+        def trace_url(self, run_id: str) -> str:
+            raise RuntimeError("backend down")
+
+    assert NoopTracer().trace_url("r") is None
+    assert SafeTracer(Failing()).trace_url("r") is None  # type: ignore[arg-type]
+    memory = InMemoryTracer()
+    assert memory.trace_url("r") is None
+    with memory.run("root", run_id="r", input=None, tags=[], metadata={}):
+        pass
+    assert memory.trace_url("r") == "memory://trace/r"

@@ -66,3 +66,12 @@ def test_discard_forgets_a_run() -> None:
 def test_events_serialize_to_json() -> None:
     event = EventBus().publish("r", "step_retry", step_id="s1", attempt=2)
     assert RunEvent.model_validate_json(event.model_dump_json()) == event
+
+
+def test_a_run_is_known_to_the_bus_from_open_until_discard() -> None:
+    bus = EventBus()
+    assert not bus.has_run("r")
+    bus.open("r")
+    assert bus.has_run("r") and bus.history("r") == []
+    bus.discard("r")
+    assert not bus.has_run("r")

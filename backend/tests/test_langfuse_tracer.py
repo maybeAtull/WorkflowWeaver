@@ -243,3 +243,20 @@ def test_the_tracer_is_built_from_the_settings_without_any_network(
             "timeout": 20,
         }
     ]
+
+
+# ------------------------------------------------------------------ per-run trace links
+
+
+def test_each_run_keeps_its_own_trace_link(propagated: list[dict[str, Any]]) -> None:
+    """Runs overlap, so a link must belong to its run, not to 'the last trace'."""
+    tracer, client = make()
+    ids = iter(["trace-a", "trace-b"])
+    client.get_current_trace_id = lambda: next(ids)  # type: ignore[method-assign]
+    for run_id in ("run-a", "run-b"):
+        with tracer.run("r", run_id=run_id, input=None, tags=[], metadata={}):
+            pass
+    assert tracer.trace_url("run-a") == "https://langfuse.test/trace/trace-a"
+    assert tracer.trace_url("run-b") == "https://langfuse.test/trace/trace-b"
+    assert tracer.trace_url("run-a") is None  # read once, then forgotten
+    assert tracer.trace_url("never-ran") is None

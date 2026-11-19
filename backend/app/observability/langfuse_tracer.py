@@ -70,6 +70,9 @@ class LangfuseTracer:
     def __init__(self, client: Langfuse) -> None:
         self._client = client
         self._last_trace_id: str | None = None
+        # Runs can overlap, so the link must be looked up per run, not taken from "the last
+        # trace". Each entry is removed when read; an unread one is a few bytes.
+        self._trace_ids: dict[str, str] = {}
 
     @property
     def client(self) -> Langfuse:
@@ -97,6 +100,8 @@ class LangfuseTracer:
             name=name, as_type="span", input=input
         ) as root:
             self._last_trace_id = self._client.get_current_trace_id()
+            if self._last_trace_id:
+                self._trace_ids[run_id] = self._last_trace_id
             yield _LangfuseSpan(root)
 
     @contextmanager
@@ -136,6 +141,13 @@ class LangfuseTracer:
     @property
     def last_trace_id(self) -> str | None:
         return self._last_trace_id
+
+    def trace_url(self, run_id: str) -> str | None:
+        """The Langfuse link of one run (None if it never produced a trace)."""
+        trace_id = self._trace_ids.pop(run_id, None)
+        if trace_id is None:
+            return None
+        return self._client.get_trace_url(trace_id=trace_id)
 
     def last_trace_url(self) -> str | None:
         """The Langfuse link of the most recent run (for the runner to print)."""

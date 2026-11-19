@@ -70,6 +70,14 @@ class EventBus:
             queue.put_nowait(event)
         return event
 
+    def open(self, run_id: str) -> None:
+        """Register a run before its first event, so `has_run` is true from the moment it starts."""
+        self._channel(run_id)
+
+    def has_run(self, run_id: str) -> bool:
+        """True while the bus still holds this run (it is forgotten once stored in SQLite)."""
+        return run_id in self._channels
+
     def history(self, run_id: str) -> list[RunEvent]:
         return list(self._channel(run_id).history)
 

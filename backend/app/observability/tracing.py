@@ -115,6 +115,10 @@ class Tracer(Protocol):
         """Flush and stop the exporter; call once when the process ends."""
         ...
 
+    def trace_url(self, run_id: str) -> str | None:
+        """The link to a finished run's trace, if the backend has one (None otherwise)."""
+        ...
+
 
 # --------------------------------------------------------------------------- no-op
 
@@ -140,6 +144,9 @@ class NoopTracer:
         return None
 
     def shutdown(self) -> None:
+        return None
+
+    def trace_url(self, run_id: str) -> str | None:
         return None
 
 
@@ -230,6 +237,13 @@ class SafeTracer:
             self._inner.shutdown()
         except Exception as error:  # noqa: BLE001
             self._report(error)
+
+    def trace_url(self, run_id: str) -> str | None:
+        try:
+            return self._inner.trace_url(run_id)
+        except Exception as error:  # noqa: BLE001
+            self._report(error)
+            return None
 
 
 def guarded(tracer: Tracer) -> Tracer:
@@ -358,3 +372,9 @@ class InMemoryTracer:
 
     def shutdown(self) -> None:
         self.shutdowns += 1
+
+    def trace_url(self, run_id: str) -> str | None:
+        # A stand-in link so tests can see that the run's link reaches the store.
+        return (
+            f"memory://trace/{run_id}" if self.trace.get("run_id") == run_id else None
+        )

@@ -161,10 +161,34 @@ class RunStore:
         report = json.dumps(
             {"status": "failed", "headline": INTERRUPTED_HEADLINE, "error": None}
         )
+        now = utc_now().isoformat()
         with closing(connect(self._path)) as db, db:
-            cursor = db.execute(
+            stranded = [
+                row["run_id"]
+                for row in db.execute(
+                    "SELECT run_id FROM runs WHERE status = 'running'"
+                )
+            ]
+            for run_id in stranded:
+                # Close the run's event stream too: a replay (or a browser that reconnects)
+                # waits for run_completed, and would otherwise wait forever.
+                last = db.execute(
+                    "SELECT COALESCE(MAX(seq), 0) FROM run_events WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()[0]
+                data = {
+                    "status": "failed",
+                    "error": None,
+                    "headline": INTERRUPTED_HEADLINE,
+                }
+                db.execute(
+                    "INSERT INTO run_events (run_id, seq, type, data_json, timestamp) "
+                    "VALUES (?, ?, 'run_completed', ?, ?)",
+                    (run_id, last + 1, json.dumps(data), now),
+                )
+            db.execute(
                 "UPDATE runs SET status = 'failed', finished_at = ?, report_json = ? "
                 "WHERE status = 'running'",
-                (utc_now().isoformat(), report),
+                (now, report),
             )
-            return cursor.rowcount
+            return len(stranded)
