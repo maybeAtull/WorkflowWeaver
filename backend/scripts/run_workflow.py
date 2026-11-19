@@ -25,6 +25,7 @@ from app.agent.graph import run_workflow
 from app.agent.runtime import agent_runtime
 from app.config import get_settings
 from app.events import EventBus, RunEvent
+from app.observability.langfuse_tracer import LangfuseTracer, create_tracer
 from app.tools.base import ToolError
 from scripts.smoke_intent import REQUEST  # the synthetic "Project Falcon" request
 
@@ -101,27 +102,42 @@ async def main(args: argparse.Namespace) -> int:
     bus = EventBus()
     run_id = uuid.uuid4().hex[:8]
     printer = asyncio.create_task(_print_events(bus, run_id))
+    tracer = create_tracer(settings)  # the run's trace goes to Langfuse
 
-    async with agent_runtime(settings, bus, simulate=args.simulate) as deps:
-        final = await run_workflow(deps, run_id, args.request)
-        await printer  # let the last event print before the summary
+    try:
+        async with agent_runtime(
+            settings, bus, simulate=args.simulate, tracer=tracer
+        ) as deps:
+            final = await run_workflow(deps, run_id, args.request)
+            await printer  # let the last event print before the summary
 
-        report = final["report"] or {}
-        print("\n--- report ---")
-        print(json.dumps(report, indent=2, ensure_ascii=False))
+            report = final["report"] or {}
+            print("\n--- report ---")
+            print(json.dumps(report, indent=2, ensure_ascii=False))
 
-        if args.cleanup and final["status"] == "completed":
-            print("\n--- cleanup (moving created items to the trash) ---")
-            for action in reversed(final["completed"]):
-                if action.undo_handle is None:
-                    continue
-                try:
-                    await deps.registry.undo(action.undo_handle)
-                    print(f"trashed: {action.summary}")
-                except ToolError as error:
-                    print(f"could not trash {action.summary}: {error}")
+            if args.cleanup and final["status"] == "completed":
+                print("\n--- cleanup (moving created items to the trash) ---")
+                for action in reversed(final["completed"]):
+                    if action.undo_handle is None:
+                        continue
+                    try:
+                        await deps.registry.undo(action.undo_handle)
+                        print(f"trashed: {action.summary}")
+                    except ToolError as error:
+                        print(f"could not trash {action.summary}: {error}")
+        # agent_runtime has flushed the trace by now, so the link is ready to open.
+        print(f"\nLangfuse trace: {_trace_link(tracer)}")
+    finally:
+        tracer.shutdown()
 
     return 0 if final["status"] == "completed" else 1
+
+
+def _trace_link(tracer: LangfuseTracer) -> str:
+    try:
+        return tracer.last_trace_url() or "(not available)"
+    except Exception:  # noqa: BLE001 - a missing link must not fail the run
+        return "(not available)"
 
 
 if __name__ == "__main__":

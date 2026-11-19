@@ -5,6 +5,7 @@ error, so a run never leaves Docker containers behind. The servers themselves st
 tool's first call (a few seconds each), so a run that never reaches Drive never starts Drive.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,7 +19,7 @@ from app.agent.planner import make_llm_planner
 from app.config import Settings
 from app.events import EventBus
 from app.llm import get_llm
-from app.observability.tracing import NoopTracer, Tracer
+from app.observability.tracing import NoopTracer, Tracer, guarded
 from app.tools.mcp_servers import default_specs
 from app.tools.mcp_session import McpSessionManager
 from app.tools.notion import McpCaller
@@ -68,14 +69,20 @@ async def agent_runtime(
     simulate: str | None = None,
     tracer: Tracer | None = None,
 ) -> AsyncIterator[AgentDeps]:
-    """Everything one run needs, with its MCP servers closed when the run ends."""
-    async with McpSessionManager(default_specs(settings)) as mcp:
-        yield build_agent_deps(
-            settings,
-            mcp,
-            bus,
-            llm_client=llm_client,
-            http=http,
-            simulate=simulate,
-            tracer=tracer,
-        )
+    """Everything one run needs, with its MCP servers closed and its trace flushed at the end."""
+    try:
+        async with McpSessionManager(default_specs(settings)) as mcp:
+            yield build_agent_deps(
+                settings,
+                mcp,
+                bus,
+                llm_client=llm_client,
+                http=http,
+                simulate=simulate,
+                tracer=tracer,
+            )
+    finally:
+        if tracer is not None:
+            # Sending the trace is network I/O: do it off the event loop so a slow Langfuse
+            # never stalls other runs, and even when this run failed (that trace matters most).
+            await asyncio.to_thread(guarded(tracer).flush)

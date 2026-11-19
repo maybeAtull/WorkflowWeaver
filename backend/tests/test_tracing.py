@@ -223,3 +223,11 @@ def test_the_noop_tracer_does_nothing_and_never_fails() -> None:
             span.update(usage={"total": 1})
     tracer.score("a", "b")
     tracer.flush()
+
+
+def test_shutdown_is_counted_ignored_by_the_noop_and_made_safe() -> None:
+    memory = InMemoryTracer()
+    memory.shutdown()
+    assert memory.shutdowns == 1
+    NoopTracer().shutdown()
+    SafeTracer(ExplodingTracer()).shutdown()  # type: ignore[arg-type]

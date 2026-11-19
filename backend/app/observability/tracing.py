@@ -107,7 +107,13 @@ class Tracer(Protocol):
         """A result attached to the current run's trace (a number or a category)."""
         ...
 
-    def flush(self) -> None: ...
+    def flush(self) -> None:
+        """Send whatever is still buffered (a run's trace is exported in the background)."""
+        ...
+
+    def shutdown(self) -> None:
+        """Flush and stop the exporter; call once when the process ends."""
+        ...
 
 
 # --------------------------------------------------------------------------- no-op
@@ -131,6 +137,9 @@ class NoopTracer:
         return None
 
     def flush(self) -> None:
+        return None
+
+    def shutdown(self) -> None:
         return None
 
 
@@ -216,6 +225,12 @@ class SafeTracer:
         except Exception as error:  # noqa: BLE001
             self._report(error)
 
+    def shutdown(self) -> None:
+        try:
+            self._inner.shutdown()
+        except Exception as error:  # noqa: BLE001
+            self._report(error)
+
 
 def guarded(tracer: Tracer) -> Tracer:
     """`tracer`, made safe (wrapping twice is harmless)."""
@@ -285,6 +300,7 @@ class InMemoryTracer:
         self.scores: list[tuple[str, float | str]] = []
         self.trace: dict[str, Any] = {}
         self.flushes = 0
+        self.shutdowns = 0
 
     @contextmanager
     def _record(self, record: SpanRecord) -> Iterator[SpanRecord]:
@@ -339,3 +355,6 @@ class InMemoryTracer:
 
     def flush(self) -> None:
         self.flushes += 1
+
+    def shutdown(self) -> None:
+        self.shutdowns += 1

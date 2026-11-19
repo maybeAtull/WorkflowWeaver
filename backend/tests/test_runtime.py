@@ -7,6 +7,7 @@ from app.agent.llm_client import LlmClient
 from app.agent.runtime import agent_runtime, build_agent_deps
 from app.config import Settings
 from app.events import EventBus
+from app.observability.tracing import InMemoryTracer
 from tests.test_config import FAKE_ENV
 
 
@@ -117,3 +118,51 @@ async def test_the_manager_is_closed_even_when_the_run_fails(
         async with agent_runtime(settings, EventBus(), llm_client=never_built_client()):
             raise RuntimeError("boom")
     assert fake_manager.instances[0].exited
+
+
+async def test_the_trace_is_flushed_once_when_the_run_ends(
+    monkeypatch: pytest.MonkeyPatch, fake_manager: type[FakeManager]
+) -> None:
+    tracer = InMemoryTracer()
+    settings = make_settings(monkeypatch)
+    async with agent_runtime(
+        settings, EventBus(), llm_client=never_built_client(), tracer=tracer
+    ):
+        assert tracer.flushes == 0  # nothing is sent while the run is going
+    assert tracer.flushes == 1
+
+
+async def test_the_trace_is_flushed_even_when_the_run_fails(
+    monkeypatch: pytest.MonkeyPatch, fake_manager: type[FakeManager]
+) -> None:
+    tracer = InMemoryTracer()
+    settings = make_settings(monkeypatch)
+    with pytest.raises(RuntimeError, match="boom"):
+        async with agent_runtime(
+            settings, EventBus(), llm_client=never_built_client(), tracer=tracer
+        ):
+            raise RuntimeError("boom")
+    assert tracer.flushes == 1 and fake_manager.instances[0].exited
+
+
+async def test_a_flush_that_fails_does_not_fail_the_run(
+    monkeypatch: pytest.MonkeyPatch, fake_manager: type[FakeManager]
+) -> None:
+    class BrokenFlush(InMemoryTracer):
+        def flush(self) -> None:
+            raise RuntimeError("langfuse down")
+
+    settings = make_settings(monkeypatch)
+    async with agent_runtime(
+        settings, EventBus(), llm_client=never_built_client(), tracer=BrokenFlush()
+    ):
+        pass  # leaving the block must not raise
+
+
+def test_the_deps_carry_the_tracer_and_the_provider_facts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tracer = InMemoryTracer()
+    deps = deps_for(make_settings(monkeypatch), tracer=tracer)
+    assert deps.tracer is not None
+    assert set(deps.trace_context) == {"llm_provider", "llm_model", "notifier_provider"}
