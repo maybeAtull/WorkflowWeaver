@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" font-family="Segoe UI, Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#be123c"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="760" fill="#f8fafc"/>
+
+  <text x="640" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#0f172a">WorkflowWeaver architecture</text>
+  <text x="640" y="68" text-anchor="middle" font-size="15" fill="#475569">Plain-English request in, live progress out, every action recorded and undoable</text>
+
+  <!-- Browser -->
+  <rect x="30" y="120" width="210" height="230" rx="14" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="135" y="150" text-anchor="middle" font-size="17" font-weight="700" fill="#4c1d95">React app (browser)</text>
+  <text x="135" y="182" text-anchor="middle" font-size="14" fill="#334155">Start screen</text>
+  <text x="135" y="206" text-anchor="middle" font-size="14" fill="#334155">Live timeline</text>
+  <text x="135" y="230" text-anchor="middle" font-size="14" fill="#334155">Result and report</text>
+  <text x="135" y="254" text-anchor="middle" font-size="14" fill="#334155">History</text>
+  <text x="135" y="294" text-anchor="middle" font-size="12" fill="#64748b">Vite + React + Tailwind v3</text>
+  <text x="135" y="314" text-anchor="middle" font-size="12" fill="#64748b">EventSource (SSE)</text>
+
+  <!-- API column -->
+  <rect x="300" y="120" width="230" height="100" rx="14" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="415" y="150" text-anchor="middle" font-size="17" font-weight="700" fill="#1e3a8a">FastAPI</text>
+  <text x="415" y="176" text-anchor="middle" font-size="13" fill="#334155">POST /api/runs · GET /api/runs</text>
+  <text x="415" y="196" text-anchor="middle" font-size="13" fill="#334155">/events (SSE) · /report · /templates</text>
+
+  <rect x="300" y="250" width="230" height="80" rx="14" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="415" y="280" text-anchor="middle" font-size="16" font-weight="700" fill="#1e3a8a">Run manager + event bus</text>
+  <text x="415" y="304" text-anchor="middle" font-size="13" fill="#334155">2 runs at once · typed events</text>
+
+  <rect x="300" y="360" width="230" height="80" rx="14" fill="#e2e8f0" stroke="#475569" stroke-width="2"/>
+  <text x="415" y="390" text-anchor="middle" font-size="16" font-weight="700" fill="#0f172a">SQLite run store</text>
+  <text x="415" y="414" text-anchor="middle" font-size="13" fill="#334155">requests · events · reports</text>
+
+  <!-- Agent -->
+  <rect x="580" y="100" width="360" height="440" rx="16" fill="#fff" stroke="#0f766e" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="760" y="128" text-anchor="middle" font-size="17" font-weight="700" fill="#115e59">LangGraph agent</text>
+
+  <g font-size="14" fill="#0f172a" text-anchor="middle">
+    <rect x="640" y="150" width="240" height="42" rx="10" fill="#ccfbf1" stroke="#0f766e"/><text x="760" y="177">parse_intent</text>
+    <rect x="640" y="214" width="240" height="42" rx="10" fill="#ccfbf1" stroke="#0f766e"/><text x="760" y="241">plan_steps (validated plan)</text>
+    <rect x="640" y="278" width="240" height="42" rx="10" fill="#ccfbf1" stroke="#0f766e"/><text x="760" y="305">execute_step (retry, undo handle)</text>
+    <rect x="640" y="342" width="240" height="42" rx="10" fill="#ccfbf1" stroke="#0f766e"/><text x="760" y="369">verify_work (before the message)</text>
+    <rect x="640" y="406" width="240" height="42" rx="10" fill="#ccfbf1" stroke="#0f766e"/><text x="760" y="433">write_report</text>
+    <rect x="640" y="472" width="240" height="42" rx="10" fill="#ffe4e6" stroke="#be123c"/><text x="760" y="499">roll_back (undo in reverse)</text>
+  </g>
+  <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M760 192 V212"/>
+    <path d="M760 256 V276"/>
+    <path d="M760 320 V340"/>
+    <path d="M760 384 V404"/>
+  </g>
+  <path d="M900 299 V463 H885" stroke="#be123c" stroke-width="2" fill="none" marker-end="url(#arrowRed)" stroke-dasharray="6 4"/>
+  <text x="912" y="395" font-size="12" fill="#be123c" transform="rotate(90 912 395)" text-anchor="middle">fatal failure or failed check</text>
+  <path d="M640 493 H615 V427 H636" stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Tools -->
+  <rect x="990" y="100" width="260" height="440" rx="16" fill="#fff" stroke="#b45309" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="1120" y="128" text-anchor="middle" font-size="17" font-weight="700" fill="#92400e">Tool adapters</text>
+  <text x="1120" y="148" text-anchor="middle" font-size="12" fill="#64748b">one interface: execute · undo · verify</text>
+
+  <rect x="1010" y="170" width="220" height="90" rx="12" fill="#fef3c7" stroke="#b45309"/>
+  <text x="1120" y="198" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Notion</text>
+  <text x="1120" y="220" text-anchor="middle" font-size="12.5" fill="#334155">create page · undo = trash</text>
+  <text x="1120" y="240" text-anchor="middle" font-size="12.5" fill="#334155">MCP server in Docker</text>
+
+  <rect x="1010" y="280" width="220" height="90" rx="12" fill="#fef3c7" stroke="#b45309"/>
+  <text x="1120" y="308" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Google Drive</text>
+  <text x="1120" y="330" text-anchor="middle" font-size="12.5" fill="#334155">create file · undo = trash</text>
+  <text x="1120" y="350" text-anchor="middle" font-size="12.5" fill="#334155">MCP server in Docker</text>
+
+  <rect x="1010" y="390" width="220" height="90" rx="12" fill="#fef3c7" stroke="#b45309"/>
+  <text x="1120" y="418" text-anchor="middle" font-size="15" font-weight="700" fill="#0f172a">Teams or Slack</text>
+  <text x="1120" y="440" text-anchor="middle" font-size="12.5" fill="#334155">webhook POST · always last</text>
+  <text x="1120" y="460" text-anchor="middle" font-size="12.5" fill="#334155">cannot be undone</text>
+
+  <!-- LLM and Langfuse -->
+  <rect x="580" y="590" width="170" height="80" rx="14" fill="#fce7f3" stroke="#be185d" stroke-width="2"/>
+  <text x="665" y="620" text-anchor="middle" font-size="15" font-weight="700" fill="#831843">LLM</text>
+  <text x="665" y="642" text-anchor="middle" font-size="12.5" fill="#334155">Gemini · Groq · Claude</text>
+  <text x="665" y="660" text-anchor="middle" font-size="12" fill="#64748b">structured output</text>
+
+  <rect x="790" y="590" width="150" height="80" rx="14" fill="#fce7f3" stroke="#be185d" stroke-width="2"/>
+  <text x="865" y="620" text-anchor="middle" font-size="15" font-weight="700" fill="#831843">Langfuse</text>
+  <text x="865" y="642" text-anchor="middle" font-size="12.5" fill="#334155">one trace per run</text>
+  <text x="865" y="660" text-anchor="middle" font-size="12" fill="#64748b">spans per node and tool</text>
+
+  <!-- Connections -->
+  <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)" marker-start="url(#arrow)">
+    <path d="M240 170 H298"/>
+  </g>
+  <text x="269" y="160" text-anchor="middle" font-size="11.5" fill="#475569">HTTP</text>
+  <g stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#arrow)" stroke-dasharray="6 4">
+    <path d="M300 290 H270 V250 H240" stroke="#7c3aed"/>
+  </g>
+  <text x="272" y="278" text-anchor="start" font-size="11.5" fill="#7c3aed">SSE</text>
+
+  <g stroke="#475569" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M415 220 V248"/>
+    <path d="M415 330 V358"/>
+    <path d="M530 160 H578"/>
+    <path d="M580 290 H532"/>
+    <path d="M880 299 H988"/>
+    <path d="M700 540 V588"/>
+    <path d="M840 540 V588"/>
+  </g>
+  <text x="554" y="150" text-anchor="middle" font-size="11.5" fill="#475569">start run</text>
+  <text x="556" y="282" text-anchor="middle" font-size="11.5" fill="#475569">events</text>
+  <text x="946" y="286" text-anchor="middle" font-size="11.5" fill="#475569">calls</text>
+  <text x="708" y="568" text-anchor="start" font-size="11.5" fill="#475569">intent, plan</text>
+  <text x="848" y="568" text-anchor="start" font-size="11.5" fill="#475569">trace</text>
+
+  <!-- Legend -->
+  <rect x="30" y="590" width="500" height="150" rx="14" fill="#fff" stroke="#cbd5e1"/>
+  <text x="50" y="618" font-size="15" font-weight="700" fill="#0f172a">Rules the design enforces</text>
+  <g font-size="13" fill="#334155">
+    <text x="50" y="644">1. Every tool call goes through an adapter; nodes never call a service directly.</text>
+    <text x="50" y="666">2. Each action's undo handle is saved before the next step runs.</text>
+    <text x="50" y="688">3. Temporary errors are retried (max 3, backoff + jitter) only when repeating is safe.</text>
+    <text x="50" y="710">4. The chat message is last and is sent only after verification passes.</text>
+    <text x="50" y="732">5. A fatal failure rolls back everything created, in reverse order.</text>
+  </g>
+</svg>
