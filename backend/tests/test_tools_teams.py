@@ -88,7 +88,7 @@ def test_links_become_markdown_and_awkward_characters_are_neutralised() -> None:
     )["body"]
     text = body[-1]["text"]
     assert "[Open](https://example.com/x)" in text
-    assert "[Odd)label](https://example.com/a(b%29)" in text
+    assert r"[Odd\]label](https://example.com/a(b%29)" in text
 
 
 def test_long_text_is_clipped_not_rejected() -> None:

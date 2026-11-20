@@ -31,9 +31,19 @@ ERROR_HINTS = {
 }
 
 
+_MARKDOWN_SPECIAL = "\\`*_[]()<>"
+
+
+def md_escape(text: str) -> str:
+    """Make text show literally. Card text is Markdown, so unescaped "[x](https://evil)" from
+    the notes or the LLM would become a live link (Slack gets the same treatment in `escape`).
+    """
+    return "".join(f"\\{ch}" if ch in _MARKDOWN_SPECIAL else ch for ch in text)
+
+
 def _markdown_link(label: str, url: str) -> str:
-    # ']' would end the label and ')' would end the URL, so both are neutralised.
-    return f"[{label.replace(']', ')')}]({url.replace(')', '%29')})"
+    # The label is escaped so it cannot end early; ')' would end the URL, so it is neutralised.
+    return f"[{md_escape(label)}]({url.replace(')', '%29')})"
 
 
 class TeamsNotifier(WebhookNotifier):
@@ -46,7 +56,8 @@ class TeamsNotifier(WebhookNotifier):
             {
                 "type": "TextBlock",
                 "text": clip(
-                    f"{STATUS_ICON[message.status]} {message.title}", TITLE_LIMIT
+                    f"{STATUS_ICON[message.status]} {md_escape(message.title)}",
+                    TITLE_LIMIT,
                 ),
                 "weight": "Bolder",
                 "size": "Medium",
@@ -58,7 +69,7 @@ class TeamsNotifier(WebhookNotifier):
             body.append(
                 {
                     "type": "TextBlock",
-                    "text": clip(message.summary, TEXT_LIMIT),
+                    "text": clip(md_escape(message.summary), TEXT_LIMIT),
                     "wrap": True,
                 }
             )
@@ -67,7 +78,8 @@ class TeamsNotifier(WebhookNotifier):
                 {
                     "type": "FactSet",
                     "facts": [
-                        {"title": f.name, "value": f.value} for f in message.facts
+                        {"title": md_escape(f.name), "value": md_escape(f.value)}
+                        for f in message.facts
                     ],
                 }
             )

@@ -4,7 +4,12 @@ import pytest
 from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel
 
-from app.agent.llm_client import LlmClient, LlmError, classify_llm_error
+from app.agent.llm_client import (
+    _USER_MESSAGES,
+    LlmClient,
+    LlmError,
+    classify_llm_error,
+)
 
 
 class Answer(BaseModel):
@@ -186,3 +191,14 @@ async def test_an_unknown_error_names_only_its_type() -> None:
     with pytest.raises(LlmError) as info:
         await llm.ask("s", "h", Answer)
     assert "KeyError" in str(info.value) and "secret user text" not in str(info.value)
+
+
+class FakeBadRequest(Exception):
+    status_code = 400
+
+
+def test_a_malformed_tool_call_is_reported_as_too_complex() -> None:
+    """Finding F5: Groq answers HTTP 400 tool_use_failed for a very large request."""
+    error = FakeBadRequest("Failed to call a function. code: tool_use_failed")
+    assert classify_llm_error(error) == "too_complex"
+    assert "too long" in _USER_MESSAGES["too_complex"]

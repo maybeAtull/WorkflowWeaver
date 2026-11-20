@@ -52,7 +52,7 @@ function StepRow({ step, undoDetail }: { step: StepView; undoDetail: string | nu
       <span className="mt-0.5 shrink-0">
         <StepIcon step={step} />
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 break-words">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <p className={`text-[15px] ${step.status === "queued" ? "text-slate-400" : "text-slate-100"}`}>
             {step.description}

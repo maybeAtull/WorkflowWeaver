@@ -122,7 +122,6 @@ async def test_too_many_blocks_fails_before_calling_notion() -> None:
     "params",
     [
         {"title": ""},
-        {"title": "x" * 201},
         {"title": "ok", "action_items": [""]},
         {"title": "ok", "action_items": ["a"] * 51},
         {},

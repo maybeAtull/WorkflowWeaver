@@ -201,7 +201,6 @@ def test_the_planner_may_not_set_a_settings_supplied_id(
     ("tool", "action", "params", "expected"),
     [
         ("notion", "create_page", {}, "title"),
-        ("notion", "create_page", {"title": "x" * 201}, "title"),
         ("drive", "create_text_file", {"name": "report.docx"}, "name"),
         ("notifier", "send", {"title": "ok", "status": "great"}, "status"),
         (

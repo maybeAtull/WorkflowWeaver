@@ -95,20 +95,20 @@ describe("a very long unbroken word", () => {
     }
   });
 
-  // Finding F6: the step rows and the outcome headline have no wrapping rule.
-  it.fails("wraps in a step's description", () => {
+  // Finding F6 (fixed): the step rows and the outcome headline now allow wrapping.
+  it("wraps in a step's description", () => {
     expect(wraps(screen.getByText(`Create ${LONG}`))).toBe(true);
   });
 
-  it.fails("wraps in a step's result line", () => {
+  it("wraps in a step's result line", () => {
     expect(wraps(screen.getByText(`Created ${LONG}`))).toBe(true);
   });
 
-  it.fails("wraps in a failed step's details", () => {
+  it("wraps in a failed step's details", () => {
     expect(wraps(screen.getByText(`Details: Failed ${LONG}`))).toBe(true);
   });
 
-  it.fails("wraps in the outcome headline", () => {
+  it("wraps in the outcome headline", () => {
     expect(wraps(screen.getByText(`Stopped ${LONG}`))).toBe(true);
   });
 

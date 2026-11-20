@@ -30,7 +30,13 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
-LlmErrorKind = Literal["transient", "quota", "auth", "model", "bad_output", "other"]
+LlmErrorKind = Literal[
+    "transient", "quota", "auth", "model", "bad_output", "too_complex", "other"
+]
+
+# How a provider words "the model's tool call was malformed" (Groq: HTTP 400 tool_use_failed).
+# Seen with very large requests; repeating the same call would fail the same way.
+_MALFORMED_CALL_WORDS = ("tool_use_failed", "failed to call a function")
 
 _TRANSIENT_STATUS = {500, 502, 503, 504, 529}
 _STATUS_IN_TEXT = re.compile(r"\b([45]\d\d)\b")
@@ -41,6 +47,10 @@ _USER_MESSAGES: dict[str, str] = {
     "auth": "The AI service rejected the configured key. Check LLM_API_KEY and LLM_PROVIDER.",
     "model": "The configured AI model is not available. Check LLM_MODEL.",
     "bad_output": "The AI answered in an unexpected format. Please try again.",
+    "too_complex": (
+        "That request was too long or detailed for the AI to plan reliably. "
+        "Try fewer items, or split it into two workflows."
+    ),
 }
 
 
@@ -74,6 +84,8 @@ def classify_llm_error(exc: BaseException) -> LlmErrorKind:
         found = _STATUS_IN_TEXT.search(text)
         status = int(found.group(1)) if found else None
 
+    if status == 400 and any(w in text for w in _MALFORMED_CALL_WORDS):
+        return "too_complex"
     # The status decides first (a 503 message can mention other words); text is the fallback.
     if status == 429 or any(
         w in text for w in ("resource_exhausted", "rate limit", "quota", "too many")

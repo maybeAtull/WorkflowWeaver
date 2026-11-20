@@ -217,11 +217,6 @@ def test_a_nul_character_is_handled_without_a_server_error(client: TestClient) -
     assert response.status_code < 500
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Finding F2: a lone surrogate (invalid text) in the request makes SQLite raise and the "
-    "API answer 500 instead of a clear 422.",
-)
 def test_invalid_unicode_is_refused_cleanly_not_with_a_server_error(
     client: TestClient,
 ) -> None:
@@ -230,7 +225,7 @@ def test_invalid_unicode_is_refused_cleanly_not_with_a_server_error(
         content=b'{"request": "bad \\ud800 text"}',
         headers={"content-type": "application/json"},
     )
-    assert response.status_code in (202, 422)
+    assert response.status_code == 422  # finding F2 (fixed): a clear refusal, not a 500
 
 
 def test_awkward_text_fits_notion_pages() -> (  # the adapter's own validation and block building
@@ -255,11 +250,6 @@ def test_awkward_text_fits_notion_pages() -> (  # the adapter's own validation a
         pytest.param("line one\nline two.md", id="newline"),
     ],
 )
-@pytest.mark.xfail(
-    strict=True,
-    reason="Finding F1: a title with a slash or line break is rejected by the file-name check, "
-    "so the Drive step fails and the whole run rolls back, instead of cleaning the name.",
-)
 async def test_a_title_with_forbidden_characters_still_makes_a_file(name: str) -> None:
     mcp = FakeMcp(created("whatever.md", "id-1"))
     result = await DriveAdapter(mcp, "folder").execute(
@@ -269,27 +259,33 @@ async def test_a_title_with_forbidden_characters_still_makes_a_file(name: str) -
     assert result.url and not any(ch in sent for ch in "/\\\r\n")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Finding F1: a title longer than 200 characters (the server limit) fails the step "
-    "instead of being shortened.",
-)
 async def test_a_very_long_title_is_shortened_not_refused() -> None:
     mcp = FakeMcp(created("x.md", "id-1"))
     await DriveAdapter(mcp, "folder").execute(
         "create_text_file", {"name": "T" * 250 + ".md"}
     )
-    assert len(mcp.calls[0][2]["name"]) <= MAX_NAME_CHARS
+    sent = mcp.calls[0][2]["name"]
+    assert len(sent) <= MAX_NAME_CHARS and sent.endswith(".md")
 
 
-async def test_forbidden_names_fail_fast_and_never_reach_drive() -> None:
-    """Today's behaviour, pinned: a bad name is a clear error before anything is created."""
+async def test_the_cleaned_name_reads_naturally() -> None:
+    mcp = FakeMcp(created("x.md", "id-1"))
+    await DriveAdapter(mcp, "folder").execute(
+        "create_text_file", {"name": "Q3/Q4\nplan.md"}
+    )
+    assert mcp.calls[0][2]["name"] == "Q3-Q4 plan.md"
+
+
+async def test_a_wrong_extension_still_fails_fast_and_never_reaches_drive() -> None:
     mcp = FakeMcp()
     with pytest.raises(FatalToolError, match="Invalid parameters"):
-        await DriveAdapter(mcp, "folder").execute(
-            "create_text_file", {"name": "a/b.md"}
-        )
+        await DriveAdapter(mcp, "folder").execute("create_text_file", {"name": "a.exe"})
     assert mcp.calls == []
+
+
+def test_a_long_or_multiline_notion_title_is_cleaned_not_refused() -> None:
+    params = CreatePageParams(title="Plan\nfor Q3 " + "w" * 300)
+    assert "\n" not in params.title and 0 < len(params.title) <= 200
 
 
 # ------------------------------------------------------------------ boundaries
@@ -323,12 +319,6 @@ def test_slack_escapes_every_mention_and_link_in_user_text() -> None:
     assert "<!channel>" not in text and "<@U12345>" not in text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Finding F3: Teams cards show title and summary as Markdown, so text like "
-    "[click](https://evil.example) from the notes or the LLM becomes a real link in the team "
-    "message. (Slack escapes this; Teams does not.)",
-)
 def test_teams_does_not_turn_user_text_into_links() -> None:
     card = TeamsNotifier(URL).render(
         NotificationMessage(

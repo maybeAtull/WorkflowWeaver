@@ -90,9 +90,6 @@ async def test_folder_can_be_overridden_per_step() -> None:
     [
         {"name": "notes"},  # no extension
         {"name": "report.docx"},  # the server accepts only .txt and .md
-        {"name": "a\nb.md"},
-        {"name": "dir/notes.md"},
-        {"name": ".md" * 100 + "x.md"},  # too long
         {"name": ""},
         {"name": "ok.md", "content": "x" * (MAX_CONTENT_CHARS + 1)},
         {},

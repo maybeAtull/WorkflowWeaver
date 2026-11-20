@@ -34,7 +34,7 @@ export default function OutcomeCard({ view, onStartAnother }: Props) {
     <section aria-label="Result" className={`rounded-3xl border p-6 sm:p-8 ${styles.card}`}>
       <div className="flex items-start gap-4">
         <ToneIcon tone={tone} className={`mt-1 h-6 w-6 shrink-0 ${styles.icon}`} />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 break-words">
           <h2 className="text-xl font-medium">{outcomeTitle(outcome.status)}</h2>
           <p className="mt-1 text-slate-300">{outcome.headline}</p>
 

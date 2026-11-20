@@ -35,6 +35,13 @@ class StartRunRequest(BaseModel):
     def _not_blank(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
             raise ValueError("Describe the workflow you want to run.")
+        if value is not None:
+            try:
+                value.encode("utf-8")  # a lone surrogate cannot be stored or sent on
+            except UnicodeEncodeError:
+                raise ValueError(
+                    "The text contains characters that cannot be used. Please retype it."
+                ) from None
         return value.strip() if value is not None else None
 
     @model_validator(mode="after")

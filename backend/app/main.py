@@ -4,8 +4,10 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.agent.runtime import agent_runtime
 from app.api import history as history_api
@@ -72,6 +74,19 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(RequestValidationError)
+    async def refuse_bad_input(
+        _: Request, error: RequestValidationError
+    ) -> JSONResponse:
+        # FastAPI's default reply echoes each problem's `input`. Invalid text (a lone surrogate)
+        # cannot be written back, which turned a plain 422 into a 500. Only where, what and why
+        # are sent; the user's own text is not echoed.
+        problems = [
+            {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+            for e in error.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": problems})
 
     app.include_router(runs_api.router)
     app.include_router(history_api.router)

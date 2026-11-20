@@ -54,6 +54,17 @@ class McpCaller(Protocol):
     ) -> str: ...
 
 
+def clean_file_name(name: str) -> str:
+    """Make a title the Drive server accepts: line breaks become spaces, slashes become '-',
+    and a name over the limit is shortened (the extension is kept). Titles come from notes and
+    the LLM, so this is cleaning, not an error: a odd title must not roll back a whole run.
+    """
+    cleaned = " ".join(name.replace("/", "-").replace("\\", "-").split())
+    extension = next((e for e in ALLOWED_EXTENSIONS if cleaned.lower().endswith(e)), "")
+    stem = cleaned[: len(cleaned) - len(extension)]
+    return stem[: MAX_NAME_CHARS - len(extension)].strip() + extension
+
+
 class CreateTextFileParams(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     content: str = Field(default="", max_length=MAX_CONTENT_CHARS)
@@ -62,11 +73,14 @@ class CreateTextFileParams(BaseModel):
     # file name so the name is unique to this run (see the module docstring).
     unique_token: str | None = Field(default=None, pattern=r"^[A-Za-z0-9]{1,16}$")
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def _clean_name(cls, name: Any) -> Any:
+        return clean_file_name(name) if isinstance(name, str) else name
+
     @field_validator("name")
     @classmethod
     def _valid_file_name(cls, name: str) -> str:
-        if any(ch in name for ch in "\r\n/\\"):
-            raise ValueError("file name must not contain line breaks or slashes")
         if not name.lower().endswith(ALLOWED_EXTENSIONS):
             raise ValueError(f"file name must end with one of {ALLOWED_EXTENSIONS}")
         return name

@@ -8,7 +8,7 @@ import json
 import re
 from typing import Annotated, Any, ClassVar, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.tools.base import (
     ActionSpec,
@@ -28,6 +28,7 @@ RETRIEVE_PAGE_TOOL = "API-retrieve-a-page"
 # Notion's own limits: 2000 characters per rich-text block, 100 child blocks per request.
 MAX_BLOCK_TEXT = 2000
 MAX_BLOCKS = 100
+MAX_TITLE_CHARS = 200
 
 
 class McpCaller(Protocol):
@@ -42,12 +43,21 @@ ActionItem = Annotated[str, Field(min_length=1, max_length=500)]
 
 
 class CreatePageParams(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(min_length=1, max_length=MAX_TITLE_CHARS)
     content: str = Field(
         default="", max_length=10_000
     )  # paragraphs split on blank lines
     action_items: list[ActionItem] = Field(default_factory=list, max_length=50)
     parent_page_id: str | None = None  # defaults to the sandbox page from settings
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _clean_title(cls, title: Any) -> Any:
+        """A title is one line of at most 200 characters. Notes and the LLM can give more, and
+        that must be shortened, not fail the step and roll back the run."""
+        if not isinstance(title, str):
+            return title
+        return " ".join(title.split())[:MAX_TITLE_CHARS].strip()
 
 
 class GetPageParams(BaseModel):
